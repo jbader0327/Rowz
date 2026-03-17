@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Rowzr AI — The Complete AI Platform</title>
-  <meta name="description" content="Multi-agent AI with smart home automation, persistent memory, self-learning, user profiles, project management. Powered by Rowzy." />
-  <meta property="og:title" content="Rowzr AI v4.0" />
-  <meta property="og:description" content="The Smartest AI Platform — Smart Home, Multi-Agent, Self-Learning" />
+  <meta name="description" content="Multi-agent AI with portfolio automation, AI worlds, 8K film studio, live satellite tracking, smart home, 4D maps. Powered by Rowzy." />
+  <meta property="og:title" content="Rowzr AI v4.2" />
+  <meta property="og:description" content="The Smartest AI Platform — Portfolio AI, Worlds, Film Studio, Smart Home" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://rowzr.com" />
   <link rel="canonical" href="https://rowzr.com" />
@@ -17,7 +17,7 @@
   <style>*{margin:0;padding:0;box-sizing:border-box}html,body,#root{width:100%;height:100%;overflow:hidden}body{font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased;background:#06061a;color:#d0d0e0}#ld{display:flex;align-items:center;justify-content:center;height:100vh;background:#06061a}#ld .lg{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#00F0FF,#A78BFA,#F472B6);display:flex;align-items:center;justify-content:center;font:800 30px 'Space Mono',monospace;color:#000;margin:0 auto 14px;background-size:200% 200%;animation:g 4s ease infinite}#ld .tx{color:#00F0FF;font:600 14px 'Space Mono',monospace;text-align:center}@keyframes g{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}</style>
 </head>
 <body>
-  <div id="root"><div id="ld"><div><div class="lg">R</div><div class="tx">Rowzr AI v4.0</div></div></div></div>
+  <div id="root"><div id="ld"><div><div class="lg">R</div><div class="tx">Rowzr AI v4.2</div></div></div></div>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script>
@@ -254,7 +254,7 @@ SPECIALIZATION BY MODEL:
     deepSearch: { icon: "\u229B", label: "Deep Search", cat: "Intelligence", color: "#00F0FF" },
     agent: { icon: "\u25CE", label: "Agent Hub", cat: "Intelligence", color: "#00F0FF" },
     // ─── AGENT VERTICALS: Non-Software Departments ───
-    agentFinance: { icon: "\u25C7", label: "Finance Agent", cat: "Agent \u2014 Enterprise", color: "#FBBF24", desc: "Compliance, reporting, forecasting" },
+    agentFinance: { icon: "\u25C7", label: "Finance Agent", cat: "Agent \u2014 Enterprise", color: "#FBBF24", desc: "Portfolio automation, accounting, tax strategy, investment analysis" },
     agentLegal: { icon: "\xA7", label: "Legal Agent", cat: "Agent \u2014 Enterprise", color: "#F59E0B", desc: "Contract review, clause negotiation" },
     agentMarketing: { icon: "\u25C8", label: "Marketing Agent", cat: "Agent \u2014 Enterprise", color: "#EC4899", desc: "Full-stack autonomous marketing \u2014 campaigns, content, analytics, personalization, lead management" },
     agentHR: { icon: "\u25C9", label: "HR Agent", cat: "Agent \u2014 Enterprise", color: "#8B5CF6", desc: "Onboarding, employee queries" },
@@ -281,7 +281,8 @@ SPECIALIZATION BY MODEL:
     // ─── EXISTING FEATURES ───
     textToImage: { icon: "\u25D0", label: "Image Gen", cat: "Create", color: "#F472B6" },
     textToVideo: { icon: "\u25B6", label: "Video Gen", cat: "Create", color: "#F472B6" },
-    filmStudio: { icon: "\u25C9", label: "Film Studio", cat: "Create", color: "#F472B6" },
+    filmStudio: { icon: "\u25C9", label: "Film Studio", cat: "Create", color: "#F472B6", desc: "SeedDance 2.0-class AI film production \u2014 8K, storyboarding, VFX" },
+    worlds: { icon: "\u{1F310}", label: "Worlds", cat: "Create", color: "#7C3AED", desc: "AI world builder \u2014 create immersive 3D environments with full user control" },
     musicCreator: { icon: "\u266B", label: "Music", cat: "Create", color: "#F472B6" },
     resume: { icon: "\u25E7", label: "Resume", cat: "Business", color: "#A78BFA" },
     coverLetter: { icon: "\u25E8", label: "Cover Letter", cat: "Business", color: "#A78BFA" },
@@ -479,7 +480,25 @@ SPECIALIZATION BY MODEL:
         setSearchResults([]);
         return;
       }
-      setSearchResults(PLACES.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8));
+      const local = PLACES.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())).slice(0, 5);
+      setSearchResults(local);
+    };
+    const processSearch = () => {
+      if (!searchQuery.trim()) return;
+      const match = PLACES.find((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+      if (match) {
+        goToPlace(match);
+      } else {
+        const q = encodeURIComponent(searchQuery.trim());
+        setLat(0);
+        setLng(0);
+        setZoom(14);
+        setSearchResults([]);
+        if (viewMode !== "globe") {
+          setSelectedPlace({ name: searchQuery, lat: 0, lng: 0, type: "search", icon: "\u{1F50D}" });
+        }
+        setSearchQuery(searchQuery);
+      }
     };
     const goToPlace = (place) => {
       setLat(place.lat);
@@ -492,6 +511,19 @@ SPECIALIZATION BY MODEL:
       if (animRef.current) cancelAnimationFrame(animRef.current);
       setRotation({ x: 23.5 + place.lat, y: -place.lng });
       if (earthZoom < 1.5) setEarthZoom(1.8);
+    };
+    const getMapUrl = () => {
+      const t = viewMode === "satellite" ? "k" : viewMode === "terrain" ? "p" : "m";
+      if (selectedPlace?.type === "search") {
+        return `https://maps.google.com/maps?q=${encodeURIComponent(selectedPlace.name)}&z=${zoom}&t=${t}&output=embed`;
+      }
+      return `https://maps.google.com/maps?q=${lat},${lng}&z=${zoom}&t=${t}&output=embed`;
+    };
+    const getStreetViewUrl = () => {
+      if (selectedPlace?.type === "search") {
+        return `https://www.google.com/maps/embed/v1/streetview?key=&location=${lat},${lng}&heading=0&pitch=0&fov=90`;
+      }
+      return `https://maps.google.com/maps?q=${lat},${lng}&layer=c&cbll=${lat},${lng}&cbp=12,0,,0,0&output=svembed&z=18`;
     };
     const handleMouseDown = (e) => {
       setDragging(true);
@@ -514,10 +546,6 @@ SPECIALIZATION BY MODEL:
     const toggleFreeze = () => {
       setFrozen((f) => !f);
       if (frozen && animRef.current) cancelAnimationFrame(animRef.current);
-    };
-    const getMapUrl = () => {
-      const t = viewMode === "satellite" ? "k" : viewMode === "terrain" ? "p" : "m";
-      return `https://maps.google.com/maps?q=${lat},${lng}&z=${zoom}&t=${t}&output=embed`;
     };
     useEffect(() => {
       if (viewMode !== "globe" || !canvasRef.current) return;
@@ -777,11 +805,28 @@ SPECIALIZATION BY MODEL:
               ctx.beginPath();
               ctx.arc(p.x, p.y, sz, 0, Math.PI * 2);
               ctx.fill();
+              if (sat.name === "ISS" || sat.name === "HUBBLE" || sat.name === "TIANGONG") {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, sz * 2.5, 0, Math.PI * 2);
+                ctx.strokeStyle = col + "44";
+                ctx.lineWidth = 1;
+                ctx.stroke();
+              }
+              if (earthZoom > 1.2 && !sat.isStarlink) {
+                ctx.font = `${7 * Math.min(earthZoom, 2)}px monospace`;
+                ctx.fillStyle = col + "99";
+                ctx.textAlign = "center";
+                ctx.fillText(sat.name, p.x, p.y + sz + 8);
+                ctx.textAlign = "start";
+              }
             }
           });
           ctx.font = "bold 10px sans-serif";
           ctx.fillStyle = "rgba(255,200,50,0.7)";
-          ctx.fillText(`\u{1F6F0} ${liveSatellites.length} satellites`, 10, 20);
+          ctx.fillText(`\u{1F6F0} ${liveSatellites.length} satellites \xB7 Live data`, 10, 20);
+          ctx.font = "9px sans-serif";
+          ctx.fillStyle = "rgba(255,200,50,0.4)";
+          ctx.fillText("Switch to Satellites tab for real-time 3D tracking", 10, 34);
         }
         const limb = ctx.createRadialGradient(cx, cy, R * 0.6, cx, cy, R);
         limb.addColorStop(0, "transparent");
@@ -819,7 +864,8 @@ SPECIALIZATION BY MODEL:
     const overlays = [
       { id: "none", label: "None", icon: "\u25CC" },
       { id: "flights", label: "Live Flights", icon: "\u2708", live: true },
-      { id: "satellites", label: "Satellites", icon: "\u{1F6F0}\uFE0F", live: true },
+      { id: "satellites", label: "Satellites", icon: "\u{1F6F0}\uFE0F", live: true, desc: "Live satellite tracking via SatelliteTracker3D" },
+      { id: "satTracker", label: "Satellite Tracker", icon: "\u{1F6F0}\uFE0F", live: true, desc: "Full 3D live tracker (ISS & more)" },
       { id: "weather", label: "Weather", icon: "\u2601" },
       { id: "heatmap", label: "Population", icon: "\u{1F525}" }
     ];
@@ -836,6 +882,7 @@ SPECIALIZATION BY MODEL:
       { id: "terrain", label: "Terrain", icon: "\u26F0\uFE0F" },
       { id: "street", label: "Street", icon: "\u{1F6B6}" },
       { id: "globe", label: "4D Globe", icon: "\u{1F30D}" },
+      { id: "satTracker", label: "Satellites", icon: "\u{1F6F0}\uFE0F" },
       { id: "googleEarth", label: "Earth", icon: "\u{1F310}" }
     ].map((v) => /* @__PURE__ */ React.createElement("button", { key: v.id, onClick: () => setViewMode(v.id), style: {
       padding: "5px 10px",
@@ -857,13 +904,87 @@ SPECIALIZATION BY MODEL:
           searchPlaces(e.target.value);
         },
         onKeyDown: (e) => {
-          if (e.key === "Enter") searchPlaces(searchQuery);
+          if (e.key === "Enter") {
+            e.preventDefault();
+            processSearch();
+          }
         },
-        placeholder: "Search places...",
+        placeholder: "Search any location...",
         className: "r-input",
         style: { flex: 1, fontSize: 11, padding: "6px 10px" }
       }
-    )), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowLayers(!showLayers), className: "r-chip", style: { fontSize: 10, borderColor: showLayers ? "var(--glow1)" : void 0, color: showLayers ? "var(--glow1)" : void 0 } }, "\u25C9 Layers"), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowTimeline(!showTimeline), className: "r-chip", style: { fontSize: 10, borderColor: showTimeline ? "#FBBF24" : void 0, color: showTimeline ? "#FBBF24" : void 0 } }, "\u{1F550} 4D Time"), viewMode === "globe" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("button", { onClick: toggleFreeze, className: "r-chip", style: { fontSize: 10, borderColor: frozen ? "#F472B6" : "#34D399", color: frozen ? "#F472B6" : "#34D399" } }, frozen ? "\u2744 Frozen" : "\u21BB Rotating"), /* @__PURE__ */ React.createElement("button", { onClick: () => setTimeOfDay((t) => t === "day" ? "night" : "day"), className: "r-chip", style: { fontSize: 10 } }, timeOfDay === "day" ? "\u{1F319}" : "\u2600\uFE0F"))), searchResults.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 55, left: 14, width: 300, maxHeight: 300, overflow: "auto", borderRadius: 12, background: "var(--bg2)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,.5)", zIndex: 25, animation: "fadeSlide .15s ease" } }, searchResults.map((p, i) => /* @__PURE__ */ React.createElement("div", { key: i, onClick: () => goToPlace(p), style: { padding: "10px 14px", cursor: "pointer", display: "flex", gap: 10, alignItems: "center", borderBottom: "1px solid var(--border)" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 18 } }, p.icon), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600 } }, p.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "#555" } }, p.lat.toFixed(4), ", ", p.lng.toFixed(4)))))), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative", overflow: "hidden" } }, viewMode === "globe" ? /* @__PURE__ */ React.createElement("canvas", { ref: canvasRef, onMouseDown: handleMouseDown, onMouseMove: handleMouseMove, onMouseUp: handleMouseUp, onMouseLeave: handleMouseUp, onWheel: handleWheel, style: { width: "100%", height: "100%", cursor: dragging ? "grabbing" : "grab" } }) : viewMode === "googleEarth" ? /* @__PURE__ */ React.createElement("div", { style: { width: "100%", height: "100%", position: "relative" } }, /* @__PURE__ */ React.createElement("iframe", { src: `https://earth.google.com/web/@${lat},${lng},0a,${Math.max(100, 5e7 / Math.pow(2, zoom))}d,35y,0h,0t,0r`, style: { width: "100%", height: "100%", border: "none" }, title: "Google Earth", allow: "geolocation; fullscreen" }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 14px", fontSize: 10, color: "var(--glow1)", fontFamily: "var(--font-mono)" } }, "\u{1F310} Google Earth \u2014 ", lat.toFixed(4), ", ", lng.toFixed(4))) : viewMode === "street" ? /* @__PURE__ */ React.createElement("iframe", { src: `https://maps.google.com/maps?q=${lat},${lng}&layer=c&cbll=${lat},${lng}&cbp=12,0,,0,0&output=svembed`, style: { width: "100%", height: "100%", border: "none" }, title: "Street View", allow: "geolocation; fullscreen" }) : /* @__PURE__ */ React.createElement("iframe", { src: getMapUrl(), style: { width: "100%", height: "100%", border: "none" }, title: "Google Maps", allow: "geolocation; fullscreen", loading: "lazy" }), showLayers && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 8, right: 8, width: 220, borderRadius: 12, background: "var(--bg2)", border: "1px solid var(--border)", boxShadow: "0 8px 30px rgba(0,0,0,.5)", zIndex: 15, padding: 8, animation: "fadeSlide .15s ease" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, fontWeight: 700, color: "var(--glow2)", letterSpacing: ".1em", textTransform: "uppercase", padding: "4px 8px" } }, "Overlays"), overlays.map((o) => /* @__PURE__ */ React.createElement("div", { key: o.id, onClick: () => setOverlay(o.id), style: {
+    ), /* @__PURE__ */ React.createElement("button", { onClick: processSearch, style: { padding: "4px 10px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, var(--glow1), var(--glow2))", color: "#000", cursor: "pointer", fontSize: 10, fontWeight: 700 } }, "\u{1F50D}")), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowLayers(!showLayers), className: "r-chip", style: { fontSize: 10, borderColor: showLayers ? "var(--glow1)" : void 0, color: showLayers ? "var(--glow1)" : void 0 } }, "\u25C9 Layers"), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowTimeline(!showTimeline), className: "r-chip", style: { fontSize: 10, borderColor: showTimeline ? "#FBBF24" : void 0, color: showTimeline ? "#FBBF24" : void 0 } }, "\u{1F550} 4D Time"), viewMode === "globe" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("button", { onClick: toggleFreeze, className: "r-chip", style: { fontSize: 10, borderColor: frozen ? "#F472B6" : "#34D399", color: frozen ? "#F472B6" : "#34D399" } }, frozen ? "\u2744 Frozen" : "\u21BB Rotating"), /* @__PURE__ */ React.createElement("button", { onClick: () => setTimeOfDay((t) => t === "day" ? "night" : "day"), className: "r-chip", style: { fontSize: 10 } }, timeOfDay === "day" ? "\u{1F319}" : "\u2600\uFE0F"))), searchResults.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 55, left: 14, width: 300, maxHeight: 300, overflow: "auto", borderRadius: 12, background: "var(--bg2)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,.5)", zIndex: 25, animation: "fadeSlide .15s ease" } }, searchResults.map((p, i) => /* @__PURE__ */ React.createElement("div", { key: i, onClick: () => goToPlace(p), style: { padding: "10px 14px", cursor: "pointer", display: "flex", gap: 10, alignItems: "center", borderBottom: "1px solid var(--border)" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 18 } }, p.icon), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600 } }, p.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "#555" } }, p.lat.toFixed(4), ", ", p.lng.toFixed(4)))))), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative", overflow: "hidden" } }, viewMode === "globe" ? /* @__PURE__ */ React.createElement("canvas", { ref: canvasRef, onMouseDown: handleMouseDown, onMouseMove: handleMouseMove, onMouseUp: handleMouseUp, onMouseLeave: handleMouseUp, onWheel: handleWheel, style: { width: "100%", height: "100%", cursor: dragging ? "grabbing" : "grab" } }) : viewMode === "googleEarth" ? /* @__PURE__ */ React.createElement("div", { style: { width: "100%", height: "100%", position: "relative" } }, /* @__PURE__ */ React.createElement(
+      "iframe",
+      {
+        src: selectedPlace?.type === "search" ? `https://earth.google.com/web/search/${encodeURIComponent(selectedPlace.name)}/` : `https://earth.google.com/web/@${lat},${lng},0a,${Math.max(100, 5e7 / Math.pow(2, zoom))}d,35y,0h,60t,0r`,
+        style: { width: "100%", height: "100%", border: "none" },
+        title: "Google Earth",
+        allow: "geolocation; fullscreen"
+      }
+    ), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", background: "var(--bg2)ee", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 14px", fontSize: 10, color: "var(--glow1)", fontFamily: "var(--font-mono)", backdropFilter: "blur(6px)" } }, "\u{1F310} Google Earth \u2014 ", selectedPlace?.name || `${lat.toFixed(4)}, ${lng.toFixed(4)}`)) : viewMode === "satTracker" ? (
+      /* ═══ LIVE SATELLITE TRACKER ═══ */
+      /* @__PURE__ */ React.createElement("div", { style: { width: "100%", height: "100%", position: "relative", background: "#000" } }, /* @__PURE__ */ React.createElement(
+        "iframe",
+        {
+          src: "https://satellitetracker3d.com/track?norad-id=51769",
+          style: { width: "100%", height: "100%", border: "none" },
+          title: "Live Satellite Tracker",
+          allow: "geolocation; fullscreen; accelerometer; gyroscope",
+          referrerPolicy: "no-referrer-when-downgrade"
+        }
+      ), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 10, left: 10, display: "flex", flexDirection: "column", gap: 6, zIndex: 10 } }, /* @__PURE__ */ React.createElement("div", { style: { background: "var(--bg2)ee", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 14px", backdropFilter: "blur(8px)", boxShadow: "0 4px 20px rgba(0,0,0,.5)" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16 } }, "\u{1F6F0}\uFE0F"), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "#FBBF24", fontFamily: "var(--font-mono)" } }, "Live Satellite Tracker"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "#555" } }, "Powered by SatelliteTracker3D \u2014 Real-time orbital data"))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, fontWeight: 700, color: "var(--glow2)", letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 6 } }, "Quick Track"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, flexWrap: "wrap" } }, [
+        { name: "ISS", norad: "25544" },
+        { name: "Hubble", norad: "20580" },
+        { name: "Tiangong", norad: "48274" },
+        { name: "NOAA-20", norad: "43013" },
+        { name: "Starlink", norad: "51769" },
+        { name: "GOES-16", norad: "41866" },
+        { name: "Landsat 9", norad: "49260" },
+        { name: "JWST", norad: "50463" }
+      ].map((s) => /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          key: s.norad,
+          onClick: () => {
+            const iframe = document.querySelector('iframe[title="Live Satellite Tracker"]');
+            if (iframe) iframe.src = `https://satellitetracker3d.com/track?norad-id=${s.norad}`;
+          },
+          style: {
+            padding: "4px 8px",
+            borderRadius: 6,
+            border: "1px solid var(--border)",
+            background: "var(--bg3)",
+            cursor: "pointer",
+            fontSize: 9,
+            color: "#888",
+            fontFamily: "var(--font-body)",
+            transition: "all .15s"
+          },
+          onMouseEnter: (e) => {
+            e.target.style.borderColor = "#FBBF2466";
+            e.target.style.color = "#FBBF24";
+          },
+          onMouseLeave: (e) => {
+            e.target.style.borderColor = "var(--border)";
+            e.target.style.color = "#888";
+          }
+        },
+        s.name
+      ))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, fontWeight: 700, color: "var(--glow2)", letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 4 } }, "Custom NORAD ID"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement("input", { id: "norad-input", placeholder: "e.g. 25544", className: "r-input", style: { flex: 1, fontSize: 10, padding: "4px 8px", fontFamily: "var(--font-mono)" } }), /* @__PURE__ */ React.createElement("button", { onClick: () => {
+        const val = document.getElementById("norad-input").value.trim();
+        if (val) {
+          const iframe = document.querySelector('iframe[title="Live Satellite Tracker"]');
+          if (iframe) iframe.src = `https://satellitetracker3d.com/track?norad-id=${val}`;
+        }
+      }, style: { padding: "4px 10px", borderRadius: 6, border: "none", background: "linear-gradient(135deg, #FBBF24, var(--glow2))", color: "#000", cursor: "pointer", fontSize: 9, fontWeight: 700 } }, "Track"))))), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", bottom: 12, right: 12, zIndex: 10 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => window.open("https://satellitetracker3d.com/track?norad-id=51769", "_blank"), style: { padding: "6px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg2)ee", cursor: "pointer", fontSize: 10, color: "#FBBF24", fontFamily: "var(--font-body)", backdropFilter: "blur(8px)" } }, "Open Full Tracker \u2197")))
+    ) : viewMode === "street" ? /* @__PURE__ */ React.createElement("div", { style: { width: "100%", height: "100%", position: "relative" } }, /* @__PURE__ */ React.createElement("iframe", { src: `https://maps.google.com/maps?q=${selectedPlace?.type === "search" ? encodeURIComponent(selectedPlace.name) : lat + "," + lng}&layer=c&cbll=${lat},${lng}&cbp=12,0,,0,0&output=svembed&z=18`, style: { width: "100%", height: "100%", border: "none" }, title: "Street View", allow: "geolocation; fullscreen", loading: "lazy" }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", background: "var(--bg2)ee", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 14px", fontSize: 10, color: "var(--glow2)", fontFamily: "var(--font-mono)", backdropFilter: "blur(6px)" } }, "\u{1F441} Street View \u2014 ", selectedPlace?.name || `${lat.toFixed(4)}, ${lng.toFixed(4)}`)) : /* @__PURE__ */ React.createElement("iframe", { src: getMapUrl(), style: { width: "100%", height: "100%", border: "none" }, title: "Google Maps", allow: "geolocation; fullscreen", loading: "lazy" }), showLayers && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 8, right: 8, width: 220, borderRadius: 12, background: "var(--bg2)", border: "1px solid var(--border)", boxShadow: "0 8px 30px rgba(0,0,0,.5)", zIndex: 15, padding: 8, animation: "fadeSlide .15s ease" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, fontWeight: 700, color: "var(--glow2)", letterSpacing: ".1em", textTransform: "uppercase", padding: "4px 8px" } }, "Overlays"), overlays.map((o) => /* @__PURE__ */ React.createElement("div", { key: o.id, onClick: () => {
+      if (o.id === "satTracker") {
+        setViewMode("satTracker");
+        setOverlay("none");
+      } else {
+        setOverlay(o.id);
+      }
+    }, style: {
       padding: "6px 10px",
       borderRadius: 6,
       cursor: "pointer",
@@ -1329,13 +1450,19 @@ Target role: ${targetRole}` : "");
       setShowManage(false);
     }, className: "r-chip", style: { fontSize: 10, borderColor: "#EF4444", color: "#EF4444" } }, "Cancel Plan"), /* @__PURE__ */ React.createElement("button", { className: "r-chip", style: { fontSize: 10 } }, "Update Payment"), /* @__PURE__ */ React.createElement("button", { className: "r-chip", style: { fontSize: 10 } }, "Download Invoices")))));
   }
-  function GenericAIPanel({ feature, featureKey }) {
+  function GenericAIPanel({ feature, featureKey, agentHistory, setAgentHistory }) {
     const [input, setInput] = useState("");
     const [result, setResult] = useState("");
     const [loading, setLoading] = useState(false);
     const [attachments, setAttachments] = useState([]);
     const [listening, setListening] = useState(false);
+    const [chatLog, setChatLog] = useState(() => agentHistory && agentHistory[featureKey] || []);
     const fileRef = useRef(null);
+    useEffect(() => {
+      if (setAgentHistory && chatLog.length > 0) {
+        setAgentHistory((prev) => ({ ...prev, [featureKey]: chatLog.slice(-50) }));
+      }
+    }, [chatLog, featureKey, setAgentHistory]);
     const startVoice = () => {
       if (!window.SpeechRecognition && !window.webkitSpeechRecognition) return;
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1373,12 +1500,72 @@ Target role: ${targetRole}` : "");
     const featurePrompts = {
       deepSearch: "You are Rowzy Deep Search \u2014 a multi-source research engine. Provide comprehensive, well-structured research with citations and analysis.",
       agent: "You are the Rowzy Agent \u2014 an autonomous task executor. Break tasks into clear steps and execute each one thoroughly.",
-      agentFinance: `You are Rowzy Finance Agent \u2014 an enterprise-grade AI for financial operations. Your capabilities:
-- COMPLIANCE: Monitor regulatory requirements (SOX, GAAP, IFRS), flag violations, generate compliance reports with specific citations to regulations
-- REPORTING: Generate financial statements, P&L analysis, cash flow projections, and variance reports. Use tables and clear formatting
-- FORECASTING: Build revenue/expense forecasts with confidence intervals, scenario modeling (bull/base/bear), and sensitivity analysis
-- ANOMALY DETECTION: Identify unusual transactions, budget variances >10%, and emerging cost trends
-Always provide specific numbers, percentages, and actionable recommendations. Format outputs with clear tables and headers.`,
+      agentFinance: `You are Rowzy Finance Agent \u2014 an enterprise-grade AI for automated portfolio management, financial accounting, and strategic advisory. You operate as a combined CFO + CPA + Portfolio Manager + Financial Analyst. Your 8 core capabilities:
+
+1. AUTOMATED PORTFOLIO MANAGEMENT
+- Build and rebalance diversified portfolios based on risk tolerance (conservative/moderate/aggressive), time horizon, and goals
+- Asset allocation across equities (sectors, market cap), fixed income (duration, credit quality), alternatives (REITs, commodities), and cash
+- Modern Portfolio Theory optimization: calculate efficient frontier, Sharpe ratios, alpha/beta, Sortino ratios
+- Tax-loss harvesting strategies with wash sale rule compliance
+- Dollar-cost averaging schedules, rebalancing triggers (threshold-based vs. calendar-based)
+- Sector rotation strategies based on economic cycles (expansion/peak/contraction/trough)
+- ESG/SRI screening and sustainable investing frameworks
+- Output: Full portfolio allocation tables with percentages, expected returns, risk metrics, and rationale
+
+2. FINANCIAL ACCOUNTING & BOOKKEEPING
+- Double-entry bookkeeping: journal entries, T-accounts, trial balances, adjusting entries
+- Full financial statement preparation: Income Statement, Balance Sheet, Cash Flow Statement, Statement of Equity
+- Revenue recognition (ASC 606), lease accounting (ASC 842), inventory methods (FIFO, LIFO, weighted average)
+- Depreciation schedules (straight-line, double declining, units of production, MACRS)
+- Bank reconciliations, accounts receivable aging, accounts payable management
+- Payroll calculations including FICA, FUTA, state withholdings, benefits deductions
+- Month-end and year-end closing procedures with checklist
+
+3. COMPLIANCE & REGULATORY
+- Monitor SOX, GAAP, IFRS standards and flag violations with specific citations
+- SEC reporting requirements (10-K, 10-Q, 8-K) for public companies
+- Tax compliance: federal, state, estimated quarterly payments, extensions, amended returns
+- Audit preparation: generate PBC lists, document internal controls, prepare reconciliations
+- Transfer pricing documentation (OECD guidelines)
+- Anti-money laundering (AML) and Know Your Customer (KYC) requirements
+
+4. FINANCIAL ANALYSIS & REPORTING
+- Ratio analysis: liquidity (current, quick, cash), profitability (ROE, ROA, ROIC, margins), efficiency (asset turnover, inventory days), leverage (D/E, interest coverage)
+- DuPont analysis, Z-score bankruptcy prediction, Altman model
+- Variance analysis: budget vs. actual with volume, price, and mix components
+- Break-even analysis, contribution margin, operating leverage
+- Peer benchmarking with industry comparisons
+
+5. FORECASTING & MODELING
+- Revenue forecasting: top-down (TAM/SAM/SOM), bottom-up (unit economics), historical trend extrapolation
+- 3-statement financial models with integrated assumptions
+- DCF valuation (WACC, terminal value, sensitivity tables)
+- Scenario analysis: bull/base/bear with probability weighting
+- Monte Carlo simulations for risk assessment with confidence intervals
+- Cash flow projections with runway calculations for startups
+
+6. TAX STRATEGY & OPTIMIZATION
+- Individual and corporate tax planning: deductions, credits, timing strategies
+- Entity structure optimization (LLC, S-Corp, C-Corp) with tax implications
+- Capital gains optimization: short-term vs. long-term, qualified dividends
+- Retirement account strategies: 401(k), IRA, Roth conversions, SEP, Solo 401(k)
+- Estate planning basics: gift tax, estate tax, trust structures
+- Cryptocurrency tax reporting (cost basis methods, DeFi implications)
+
+7. INVESTMENT ANALYSIS
+- Equity valuation: P/E, P/B, P/S, PEG, EV/EBITDA, dividend discount model
+- Fixed income: yield curve analysis, duration, convexity, credit spread analysis
+- Options pricing: Black-Scholes, Greeks, covered calls, protective puts
+- Real estate: cap rate, cash-on-cash return, NOI, IRR analysis
+- Alternative investments: PE/VC fund analysis, hedge fund strategies
+
+8. BUDGETING & PLANNING
+- Zero-based budgeting, incremental, rolling forecasts
+- Capital budgeting: NPV, IRR, payback period, profitability index
+- Working capital optimization: cash conversion cycle, inventory management
+- FP&A reporting packages with executive summaries and board decks
+
+FORMAT: Always use tables for financial data. Show calculations step-by-step. Include assumptions clearly. Rate confidence on projections. Cite specific accounting standards when relevant (e.g., ASC 606, IFRS 16). Add disclaimers that this is informational and not licensed financial/tax advice.`,
       agentLegal: `You are Rowzy Legal Agent \u2014 an AI-powered legal assistant for contract operations. Your capabilities:
 - CONTRACT REVIEW: Analyze contracts clause by clause, identify risks, flag unusual terms, compare against standard benchmarks
 - NEGOTIATION: Suggest counter-clauses, rank concession priorities, and draft redlined alternatives
@@ -1413,7 +1600,8 @@ Always output actual copy and specific numbers, not descriptions.`,
       agentOrchestrator: `You are Rowzy Orchestrator Agent \u2014 multi-agent task delegation, context sharing, workflow automation, fallback handling.`,
       textToImage: "You are Rowzy Image \u2014 describe the image you would generate in vivid detail.",
       textToVideo: "You are Rowzy Video \u2014 describe the video frame by frame with camera movements.",
-      filmStudio: "You are Rowzy Film Studio \u2014 create storyboards, shot lists, production plans.",
+      filmStudio: `You are Rowzy Film Studio \u2014 a SeedDance 2.0-class AI film production suite for cinematic 8K content. You handle scripting, storyboarding (shot-by-shot with camera angles, lenses 14-200mm, lighting setups), full cinematography control (pan/tilt/zoom/dolly/crane/tracking/FPV/orbit with focal length, DoF, shutter, ISO, film stock), VFX (particles, volumetric light, god rays, atmosphere, fire, rain, motion blur, film grain), color grading (LUTs, HDR10+), audio design (score, foley, Atmos), and post-production (J-cut, L-cut, match cut, pacing). 12 visual styles, up to 8K 120fps, all aspect ratios. Output: full metadata, scene breakdown with timestamps, quality scores (motion/aesthetic/coherence 0-100), color palette with hex codes, and audio suggestions. Write as a world-class director briefing VFX supervisors.`,
+      worlds: `You are Rowzy Worlds \u2014 an AI world builder that creates immersive 3D environments via natural language. Capabilities: terrain generation (mountains, oceans, biomes with 4K textures), dynamic atmosphere (weather, time-of-day, volumetric clouds, celestial events), procedural vegetation, architecture (cities, ruins, megastructures with interiors), characters and creatures with AI behaviors, physics simulation (gravity, fluid, erosion, seasons), and deep lore generation (history, cultures, languages, politics, economies). World types: Fantasy, Sci-Fi, Historical, Modern, Abstract, Underwater, Cosmic. Users control everything via natural language commands. Output: world overview, terrain map, 5-10 key locations, atmosphere details, population, systems, and visual specs for rendering engines.`,
       musicCreator: "You are Rowzy Music \u2014 compose musical arrangements with instruments, tempo, key.",
       resume: "You are Rowzy Resume Builder \u2014 create ATS-optimized resumes with quantified achievements.",
       coverLetter: "You are Rowzy Cover Letter Writer \u2014 write compelling, personalized cover letters.",
@@ -1449,13 +1637,15 @@ ${a.data}`).join("\n\n");
           })
         });
         const data = await r.json();
-        setResult(data.content?.filter((b) => b.type === "text").map((b) => b.text).join("\n") || "Done.");
+        const reply = data.content?.filter((b) => b.type === "text").map((b) => b.text).join("\n") || "Done.";
+        setResult(reply);
+        setChatLog((prev) => [...prev, { role: "user", content: input.trim(), ts: Date.now() }, { role: "assistant", content: reply, ts: Date.now() }]);
       } catch (e) {
         setResult(`\u26A0\uFE0F ${e.message}`);
       }
       setLoading(false);
     };
-    return /* @__PURE__ */ React.createElement("div", { style: { padding: 20, maxWidth: 860, margin: "0 auto" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 20, animation: "fadeSlide .3s ease" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 28, width: 48, height: 48, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: `${feature.color}15`, border: `1px solid ${feature.color}33` } }, feature.icon), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 18, fontWeight: 700, fontFamily: "var(--font-mono)", color: feature.color } }, feature.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#555" } }, feature.cat))), attachments.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10, animation: "fadeSlide .2s ease" } }, attachments.map((a, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, background: "var(--bg3)", border: "1px solid var(--border)", fontSize: 11 } }, a.preview ? /* @__PURE__ */ React.createElement("img", { src: a.preview, alt: "", style: { width: 28, height: 28, borderRadius: 4, objectFit: "cover" } }) : /* @__PURE__ */ React.createElement("span", { style: { color: feature.color } }, "\u{1F4C4}"), /* @__PURE__ */ React.createElement("span", { style: { maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#888" } }, a.name), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#555" } }, "(", (a.size / 1024).toFixed(0), "KB)"), /* @__PURE__ */ React.createElement("button", { onClick: () => removeAttachment(i), style: { background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 14, padding: 0, lineHeight: 1 } }, "\xD7")))), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative" } }, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", { style: { padding: 20, maxWidth: 860, margin: "0 auto" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 16, animation: "fadeSlide .3s ease" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 28, width: 48, height: 48, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: `${feature.color}15`, border: `1px solid ${feature.color}33` } }, feature.icon), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 18, fontWeight: 700, fontFamily: "var(--font-mono)", color: feature.color } }, feature.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#555" } }, feature.cat, chatLog.length > 0 ? ` \xB7 ${chatLog.filter((m) => m.role === "user").length} interactions` : "")), chatLog.length > 0 && /* @__PURE__ */ React.createElement("button", { onClick: () => setChatLog([]), className: "r-chip", style: { fontSize: 9 } }, "Clear History")), attachments.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10, animation: "fadeSlide .2s ease" } }, attachments.map((a, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, background: "var(--bg3)", border: "1px solid var(--border)", fontSize: 11 } }, a.preview ? /* @__PURE__ */ React.createElement("img", { src: a.preview, alt: "", style: { width: 28, height: 28, borderRadius: 4, objectFit: "cover" } }) : /* @__PURE__ */ React.createElement("span", { style: { color: feature.color } }, "\u{1F4C4}"), /* @__PURE__ */ React.createElement("span", { style: { maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#888" } }, a.name), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#555" } }, "(", (a.size / 1024).toFixed(0), "KB)"), /* @__PURE__ */ React.createElement("button", { onClick: () => removeAttachment(i), style: { background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 14, padding: 0, lineHeight: 1 } }, "\xD7")))), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "flex-end" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative" } }, /* @__PURE__ */ React.createElement(
       "textarea",
       {
         value: input,
@@ -1901,46 +2091,53 @@ Then explain your reasoning and suggest follow-ups.`,
     ));
   }
   function RowzrAI() {
+    const loadStore = () => {
+      try {
+        const raw = localStorage.getItem("rowzr_store_v2");
+        if (raw) return JSON.parse(raw);
+      } catch {
+      }
+      return null;
+    };
+    const defaultStore = {
+      profile: { name: "", avatar: null, bio: "", role: "", company: "", style: "balanced", responseLength: "auto", email: "", setupComplete: false, createdAt: Date.now() },
+      tier: "free",
+      conversations: [{ id: 0, title: "New Chat", messages: [], created: Date.now() }],
+      projects: [],
+      code: { content: "// Rowzr Code Workspace\n", lang: "javascript" },
+      agentHistory: {}
+    };
+    const saved = loadStore();
     const [darkMode, setDarkMode] = useState(true);
     const [activeView, setActiveView] = useState("chat");
     const [showNav, setShowNav] = useState(false);
     const [selectedModel, setSelectedModel] = useState(MODELS[0]);
     const [showModelPicker, setShowModelPicker] = useState(false);
-    const [conversations, setConversations] = useState([{ id: 0, title: "New Chat", messages: [], created: Date.now() }]);
+    const [conversations, setConversations] = useState(saved?.conversations || defaultStore.conversations);
     const [activeConvId, setActiveConvId] = useState(0);
-    const [convCounter, setConvCounter] = useState(1);
+    const [convCounter, setConvCounter] = useState(saved?.conversations?.length || 1);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [streamingId, setStreamingId] = useState(null);
     const [featureSearch, setFeatureSearch] = useState("");
     const [listening, setListening] = useState(false);
-    const [userTier, setUserTier] = useState("free");
+    const [userTier, setUserTier] = useState(saved?.tier || "free");
     const [chatAttachments, setChatAttachments] = useState([]);
     const [memory, setMemory] = useState(() => MemorySystem.load());
     const [showIntelligence, setShowIntelligence] = useState(false);
     const [agentActivity, setAgentActivity] = useState(null);
     const [proactiveSuggestions, setProactiveSuggestions] = useState([]);
-    const [userProfile, setUserProfile] = useState(() => {
-      try {
-        return JSON.parse(localStorage.getItem("rowzr_profile")) || { name: "Justin", avatar: null, bio: "", role: "", company: "", style: "balanced", responseLength: "auto" };
-      } catch {
-        return { name: "Justin", avatar: null, bio: "", role: "", company: "", style: "balanced", responseLength: "auto" };
-      }
-    });
+    const [userProfile, setUserProfile] = useState(saved?.profile || defaultStore.profile);
     const [showProfile, setShowProfile] = useState(false);
+    const [showOnboarding, setShowOnboarding] = useState(!saved?.profile?.setupComplete);
     const [workspace, setWorkspace] = useState("chat");
-    const [projects, setProjects] = useState(() => {
-      try {
-        return JSON.parse(localStorage.getItem("rowzr_projects")) || [];
-      } catch {
-        return [];
-      }
-    });
+    const [projects, setProjects] = useState(saved?.projects || []);
     const [activeProjectId, setActiveProjectId] = useState(null);
     const [showNewProject, setShowNewProject] = useState(false);
-    const [codeContent, setCodeContent] = useState("// Rowzr Code Workspace\n// Write or paste code here\n\n");
-    const [codeLang, setCodeLang] = useState("javascript");
+    const [codeContent, setCodeContent] = useState(saved?.code?.content || "// Rowzr Code Workspace\n");
+    const [codeLang, setCodeLang] = useState(saved?.code?.lang || "javascript");
     const [codeOutput, setCodeOutput] = useState("");
+    const [agentHistory, setAgentHistory] = useState(saved?.agentHistory || {});
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
     const chatFileRef = useRef(null);
@@ -1949,16 +2146,21 @@ Then explain your reasoning and suggest follow-ups.`,
     }, [memory]);
     useEffect(() => {
       try {
-        localStorage.setItem("rowzr_profile", JSON.stringify(userProfile));
-      } catch {
+        localStorage.setItem("rowzr_store_v2", JSON.stringify({
+          profile: userProfile,
+          tier: userTier,
+          conversations,
+          projects,
+          code: { content: codeContent, lang: codeLang },
+          agentHistory
+        }));
+      } catch (e) {
+        if (conversations.length > 10) {
+          const trimmed = conversations.slice(-10);
+          setConversations(trimmed);
+        }
       }
-    }, [userProfile]);
-    useEffect(() => {
-      try {
-        localStorage.setItem("rowzr_projects", JSON.stringify(projects));
-      } catch {
-      }
-    }, [projects]);
+    }, [userProfile, userTier, conversations, projects, codeContent, codeLang, agentHistory]);
     const handleAvatarUpload = (e) => {
       const file = e.target.files[0];
       if (!file || !file.type.startsWith("image/")) return;
@@ -2191,11 +2393,11 @@ ${a.data}`).join("\n\n");
         case "dashboard":
           return /* @__PURE__ */ React.createElement("div", { style: { padding: 20, maxWidth: 800, margin: "0 auto" } }, /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 18, fontWeight: 700, fontFamily: "var(--font-mono)", marginBottom: 16, color: "var(--glow1)" } }, "\u25EB Dashboard"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 } }, [{ label: "Conversations", val: conversations.length, color: "var(--glow1)" }, { label: "Messages", val: conversations.reduce((a, c) => a + c.messages.length, 0), color: "var(--glow2)" }, { label: "Active Model", val: selectedModel.name, color: selectedModel.color }].map((s) => /* @__PURE__ */ React.createElement("div", { key: s.label, className: "r-panel", style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 800, color: s.color, fontFamily: "var(--font-mono)" } }, s.val), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#555", marginTop: 4 } }, s.label)))));
         default:
-          if (FEATURES[activeView]) return /* @__PURE__ */ React.createElement(GenericAIPanel, { feature: FEATURES[activeView], featureKey: activeView });
+          if (FEATURES[activeView]) return /* @__PURE__ */ React.createElement(GenericAIPanel, { feature: FEATURES[activeView], featureKey: activeView, agentHistory, setAgentHistory });
           return null;
       }
     };
-    return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", height: "100vh", width: "100vw", overflow: "hidden", fontFamily: "var(--font-body)", background: darkMode ? "#06061a" : "#f4f4f8", color: darkMode ? "#d0d0e0" : "#1a1a2e", transition: "background .3s, color .3s" } }, /* @__PURE__ */ React.createElement("style", null, `
+    return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", height: "100vh", width: "100vw", overflow: "hidden", fontFamily: "var(--font-body)", background: userProfile.customBg ? `url(${userProfile.customBg}) center/cover fixed` : userProfile.bgTheme === "midnight" ? "linear-gradient(135deg, #0a0a2e, #1a0a3e)" : userProfile.bgTheme === "ocean" ? "linear-gradient(135deg, #001a2e, #003355)" : userProfile.bgTheme === "forest" ? "linear-gradient(135deg, #0a1a0a, #1a2e1a)" : userProfile.bgTheme === "sunset" ? "linear-gradient(135deg, #2e0a1a, #3e1a0a)" : darkMode ? "#06061a" : "#f4f4f8", color: darkMode ? "#d0d0e0" : "#1a1a2e", transition: "background .3s, color .3s" } }, /* @__PURE__ */ React.createElement("style", null, `
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800&family=Space+Mono:wght@400;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
         :root {
           --font-body: 'DM Sans', -apple-system, sans-serif;
@@ -2245,7 +2447,23 @@ ${a.data}`).join("\n\n");
         textarea:focus, input:focus { outline: none; }
         input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--glow1); cursor: pointer; box-shadow: 0 0 8px var(--glow1)44; }
         @media (max-width: 768px) { .r-panel { padding: 12px; } }
-      `), showNav && /* @__PURE__ */ React.createElement("div", { onClick: () => setShowNav(false), style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", backdropFilter: "blur(8px)", zIndex: 300, display: "flex" } }, /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation(), style: {
+      `), showOnboarding && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "#06061a", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { width: "100%", maxWidth: 440, animation: "fadeSlide .4s ease" } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginBottom: 28 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 72, height: 72, borderRadius: 20, background: "linear-gradient(135deg,var(--glow1),var(--glow2),var(--glow3))", backgroundSize: "200% 200%", animation: "gradShift 5s ease infinite, glowPulse 3s ease infinite", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, fontWeight: 800, color: "#000", fontFamily: "var(--font-mono)", margin: "0 auto 16px" } }, "R"), /* @__PURE__ */ React.createElement("h1", { style: { fontSize: 24, fontWeight: 800, fontFamily: "var(--font-mono)", marginBottom: 6 } }, /* @__PURE__ */ React.createElement("span", { className: "grad-text" }, "Welcome to Rowzr AI")), /* @__PURE__ */ React.createElement("p", { style: { color: "#555", fontSize: 12, lineHeight: 1.6 } }, "Set up your profile to get started with personalized AI")), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("input", { ref: avatarRef, type: "file", accept: "image/*", onChange: handleAvatarUpload, style: { display: "none" } }), /* @__PURE__ */ React.createElement("div", { onClick: () => avatarRef.current?.click(), style: { width: 80, height: 80, borderRadius: 22, margin: "0 auto 8px", cursor: "pointer", overflow: "hidden", border: "2px dashed var(--border)", display: "flex", alignItems: "center", justifyContent: "center", background: userProfile.avatar ? "none" : "var(--bg3)", transition: "border-color .15s" } }, userProfile.avatar ? /* @__PURE__ */ React.createElement("img", { src: userProfile.avatar, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 24, marginBottom: 2 } }, "\u{1F4F7}"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8, color: "#555" } }, "Add photo")))), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 9, fontWeight: 700, color: "var(--glow2)", letterSpacing: ".1em", textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Your Name *"), /* @__PURE__ */ React.createElement("input", { value: userProfile.name, onChange: (e) => setUserProfile((p) => ({ ...p, name: e.target.value })), placeholder: "What should Rowzy call you?", className: "r-input", style: { width: "100%", fontSize: 13 }, autoFocus: true })), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 9, fontWeight: 700, color: "var(--glow2)", letterSpacing: ".1em", textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Email"), /* @__PURE__ */ React.createElement("input", { value: userProfile.email || "", onChange: (e) => setUserProfile((p) => ({ ...p, email: e.target.value })), placeholder: "your@email.com", type: "email", className: "r-input", style: { width: "100%", fontSize: 13 } })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 9, fontWeight: 700, color: "var(--glow2)", letterSpacing: ".1em", textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Role / Title"), /* @__PURE__ */ React.createElement("input", { value: userProfile.role, onChange: (e) => setUserProfile((p) => ({ ...p, role: e.target.value })), placeholder: "e.g. Developer", className: "r-input", style: { width: "100%", fontSize: 12 } })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 9, fontWeight: 700, color: "var(--glow2)", letterSpacing: ".1em", textTransform: "uppercase", display: "block", marginBottom: 4 } }, "Company"), /* @__PURE__ */ React.createElement("input", { value: userProfile.company, onChange: (e) => setUserProfile((p) => ({ ...p, company: e.target.value })), placeholder: "e.g. Rowzr AI", className: "r-input", style: { width: "100%", fontSize: 12 } }))), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 9, fontWeight: 700, color: "var(--glow2)", letterSpacing: ".1em", textTransform: "uppercase", display: "block", marginBottom: 4 } }, "How should Rowzy respond?"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, ["concise", "balanced", "detailed", "academic"].map((s) => /* @__PURE__ */ React.createElement("button", { key: s, onClick: () => setUserProfile((p) => ({ ...p, style: s })), style: {
+      flex: 1,
+      padding: "8px 4px",
+      borderRadius: 8,
+      border: `1px solid ${userProfile.style === s ? "var(--glow1)" : "var(--border)"}`,
+      background: userProfile.style === s ? "var(--glow1)12" : "var(--bg3)",
+      cursor: "pointer",
+      fontSize: 11,
+      color: userProfile.style === s ? "var(--glow1)" : "#555",
+      fontFamily: "var(--font-body)",
+      fontWeight: userProfile.style === s ? 700 : 400,
+      textTransform: "capitalize"
+    } }, s)))), /* @__PURE__ */ React.createElement("button", { onClick: () => {
+      if (!userProfile.name.trim()) return;
+      setUserProfile((p) => ({ ...p, setupComplete: true, createdAt: p.createdAt || Date.now() }));
+      setShowOnboarding(false);
+    }, disabled: !userProfile.name.trim(), className: "r-btn-primary", style: { width: "100%", padding: 14, fontSize: 14, borderRadius: 12 } }, "Get Started with Rowzr AI"), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginTop: 10 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#444" } }, "Your data is stored locally on this device. No account required.")))), showNav && /* @__PURE__ */ React.createElement("div", { onClick: () => setShowNav(false), style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", backdropFilter: "blur(8px)", zIndex: 300, display: "flex" } }, /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation(), style: {
       width: 300,
       height: "100%",
       background: darkMode ? "#08081e" : "#fff",
@@ -2348,7 +2566,66 @@ ${a.data}`).join("\n\n");
       fontFamily: "var(--font-body)",
       fontWeight: userProfile.responseLength === s ? 700 : 400,
       textTransform: "capitalize"
-    } }, s)))), /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 10px", borderRadius: 8, background: "var(--bg3)", border: "1px solid var(--border)", marginTop: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#555" } }, "Plan: ", /* @__PURE__ */ React.createElement("strong", { style: { color: userTier === "free" ? "#64748B" : "var(--glow1)" } }, userTier.toUpperCase())), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#555" } }, "Interactions: ", /* @__PURE__ */ React.createElement("strong", { style: { color: "var(--glow2)" } }, memory.interactionCount)))), showIntelligence && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 46, right: 12, width: 300, borderRadius: 12, background: "var(--bg2)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,.5)", zIndex: 100, padding: 14, animation: "fadeSlide .15s ease", maxHeight: "70vh", overflow: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: "var(--glow1)", fontFamily: "var(--font-mono)" } }, "\u25CE Intelligence Systems"), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowIntelligence(false), style: { background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 14 } }, "\xD7")), [
+    } }, s)))), /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 10px", borderRadius: 8, background: "var(--bg3)", border: "1px solid var(--border)", marginTop: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#555" } }, "Plan: ", /* @__PURE__ */ React.createElement("strong", { style: { color: userTier === "free" ? "#64748B" : "var(--glow1)" } }, userTier.toUpperCase())), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#555" } }, "Interactions: ", /* @__PURE__ */ React.createElement("strong", { style: { color: "var(--glow2)" } }, memory.interactionCount))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, padding: "10px", borderRadius: 8, background: "var(--bg3)", border: "1px solid var(--border)" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, fontWeight: 700, color: "var(--glow1)", letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 8 } }, "Customization"), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 9, fontWeight: 600, color: "#888", display: "block", marginBottom: 3 } }, "Background"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 6 } }, [
+      { id: "default", label: "Default", bg: "none" },
+      { id: "midnight", label: "Midnight", bg: "linear-gradient(135deg, #0a0a2e, #1a0a3e)" },
+      { id: "ocean", label: "Ocean", bg: "linear-gradient(135deg, #001a2e, #003355)" },
+      { id: "forest", label: "Forest", bg: "linear-gradient(135deg, #0a1a0a, #1a2e1a)" },
+      { id: "sunset", label: "Sunset", bg: "linear-gradient(135deg, #2e0a1a, #3e1a0a)" },
+      { id: "custom", label: "Photo", bg: "none" }
+    ].map((b) => /* @__PURE__ */ React.createElement("button", { key: b.id, onClick: () => {
+      if (b.id === "custom") {
+        const inp = document.createElement("input");
+        inp.type = "file";
+        inp.accept = "image/*";
+        inp.onchange = (ev) => {
+          const reader = new FileReader();
+          reader.onload = (r) => setUserProfile((p) => ({ ...p, customBg: r.target.result, bgTheme: "custom" }));
+          reader.readAsDataURL(ev.target.files[0]);
+        };
+        inp.click();
+      } else {
+        setUserProfile((p) => ({ ...p, bgTheme: b.id, customBg: null }));
+      }
+    }, style: {
+      padding: "4px 8px",
+      borderRadius: 6,
+      fontSize: 9,
+      border: `1px solid ${(userProfile.bgTheme || "default") === b.id ? "var(--glow1)" : "var(--border)"}`,
+      background: b.bg !== "none" ? b.bg : "var(--bg3)",
+      cursor: "pointer",
+      color: (userProfile.bgTheme || "default") === b.id ? "var(--glow1)" : "#888"
+    } }, b.label))), userProfile.customBg && /* @__PURE__ */ React.createElement("div", { style: { width: "100%", height: 40, borderRadius: 6, overflow: "hidden", border: "1px solid var(--border)" } }, /* @__PURE__ */ React.createElement("img", { src: userProfile.customBg, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 9, fontWeight: 600, color: "#888", display: "block", marginBottom: 3 } }, "Sidebar Layout"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, [
+      { id: "default", label: "Default" },
+      { id: "compact", label: "Compact" },
+      { id: "wide", label: "Wide" }
+    ].map((l) => /* @__PURE__ */ React.createElement("button", { key: l.id, onClick: () => setUserProfile((p) => ({ ...p, layout: l.id })), style: {
+      flex: 1,
+      padding: "5px 4px",
+      borderRadius: 6,
+      fontSize: 9,
+      border: `1px solid ${(userProfile.layout || "default") === l.id ? "var(--glow2)" : "var(--border)"}`,
+      background: (userProfile.layout || "default") === l.id ? "var(--glow2)12" : "var(--bg3)",
+      cursor: "pointer",
+      color: (userProfile.layout || "default") === l.id ? "var(--glow2)" : "#555"
+    } }, l.label)))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement("label", { style: { fontSize: 9, fontWeight: 600, color: "#888", display: "block", marginBottom: 3 } }, "Pinned Features"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 3, flexWrap: "wrap" } }, ["chat", "agent", "maps", "smartHome", "resume", "finance", "filmStudio", "worlds"].map((key) => {
+      const f = FEATURES[key];
+      const pinned = (userProfile.pinnedFeatures || ["chat", "agent", "maps"]).includes(key);
+      return /* @__PURE__ */ React.createElement("button", { key, onClick: () => {
+        setUserProfile((p) => {
+          const pins = p.pinnedFeatures || ["chat", "agent", "maps"];
+          return { ...p, pinnedFeatures: pinned ? pins.filter((k) => k !== key) : [...pins, key] };
+        });
+      }, style: {
+        padding: "3px 7px",
+        borderRadius: 5,
+        fontSize: 8,
+        border: `1px solid ${pinned ? f?.color || "var(--glow1)" : "var(--border)"}`,
+        background: pinned ? `${f?.color || "var(--glow1)"}15` : "transparent",
+        cursor: "pointer",
+        color: pinned ? f?.color || "var(--glow1)" : "#555"
+      } }, f?.icon, " ", f?.label);
+    })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8, color: "#444", marginTop: 3 } }, "Pinned features appear in your quick access bar")))), showIntelligence && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 46, right: 12, width: 300, borderRadius: 12, background: "var(--bg2)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,.5)", zIndex: 100, padding: 14, animation: "fadeSlide .15s ease", maxHeight: "70vh", overflow: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: "var(--glow1)", fontFamily: "var(--font-mono)" } }, "\u25CE Intelligence Systems"), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowIntelligence(false), style: { background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 14 } }, "\xD7")), [
       { name: "Multi-Agent", status: "Active", desc: "4 sub-agents (Analyst, Reasoner, Creative, Planner)", color: "#00F0FF", icon: "\u25C8" },
       { name: "Persistent Memory", status: `${memory.interactionCount} interactions`, desc: `${memory.conversationSummaries.length} summaries, ${memory.learnings.length} learnings`, color: "#A78BFA", icon: "\u25C6" },
       { name: "Self-Learning", status: `${memory.feedbackLog.length} feedback signals`, desc: "Reflection engine + feedback loops active", color: "#34D399", icon: "\u2699" },
@@ -2497,7 +2774,7 @@ ${codeContent}
         color: "#000",
         fontFamily: "var(--font-mono)",
         marginBottom: 18
-      } }, "R"), /* @__PURE__ */ React.createElement("h1", { style: { fontSize: 26, fontWeight: 800, marginBottom: 6, fontFamily: "var(--font-mono)" } }, /* @__PURE__ */ React.createElement("span", { className: "grad-text" }, "Hello, ", userProfile.name || "there")), /* @__PURE__ */ React.createElement("p", { style: { color: "#555", fontSize: 13, maxWidth: 440, lineHeight: 1.6, marginBottom: 24 } }, "I'm ", /* @__PURE__ */ React.createElement("strong", { style: { color: "var(--glow1)" } }, "Rowzy"), " \u2014 your AI from Rowzr AI. Ask me anything, or explore 20+ tools below."), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, width: "100%", maxWidth: 480, marginBottom: 24 } }, [
+      } }, "R"), /* @__PURE__ */ React.createElement("h1", { style: { fontSize: 26, fontWeight: 800, marginBottom: 6, fontFamily: "var(--font-mono)" } }, /* @__PURE__ */ React.createElement("span", { className: "grad-text" }, userProfile.setupComplete ? `Hey, ${userProfile.name}` : "Welcome to Rowzr AI")), /* @__PURE__ */ React.createElement("p", { style: { color: "#555", fontSize: 13, maxWidth: 440, lineHeight: 1.6, marginBottom: 24 } }, userProfile.setupComplete ? /* @__PURE__ */ React.createElement("span", null, "What can ", /* @__PURE__ */ React.createElement("strong", { style: { color: "var(--glow1)" } }, "Rowzy"), " help you with today?") : /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("strong", { style: { color: "var(--glow1)" } }, "Rowzy"), " is ready. ", /* @__PURE__ */ React.createElement("span", { onClick: () => setShowOnboarding(true), style: { color: "var(--glow2)", cursor: "pointer", textDecoration: "underline" } }, "Set up your profile"), " for a personalized experience.")), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, width: "100%", maxWidth: 480, marginBottom: 24 } }, [
         { icon: "\u25C8", label: "Deep Analysis", prompt: "Analyze supply chain optimization for my logistics transition", color: "var(--glow1)" },
         { icon: "\u2318", label: "Write Code", prompt: "Build a REST API with auth in Node.js", color: "#34D399" },
         { icon: "\u25EB", label: "Data Analysis", prompt: "Analyze procurement data and identify cost savings", color: "var(--glow2)" },
