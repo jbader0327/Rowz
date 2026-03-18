@@ -330,7 +330,7 @@ SPECIALIZATION BY MODEL:
     return { d, done };
   }
   function Maps4DPanel() {
-    const [viewMode, setViewMode] = useState("cesium");
+    const [viewMode, setViewMode] = useState("map");
     const [lat, setLat] = useState(30.7309);
     const [lng, setLng] = useState(-81.5465);
     const [zoom, setZoom] = useState(12);
@@ -339,174 +339,783 @@ SPECIALIZATION BY MODEL:
     const [selectedPlace, setSelectedPlace] = useState(null);
     const [overlay, setOverlay] = useState("none");
     const [showLayers, setShowLayers] = useState(false);
-    const [showTimeline, setShowTimeline] = useState(false);
+    const [rotation, setRotation] = useState({ x: 23.5, y: 0 });
+    const [dragging, setDragging] = useState(false);
+    const [frozen, setFrozen] = useState(false);
+    const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+    const [earthZoom, setEarthZoom] = useState(1);
+    const [timeOfDay, setTimeOfDay] = useState("day");
     const [timeSlider, setTimeSlider] = useState(2025);
     const [playing, setPlaying] = useState(false);
+    const [timeSpeed, setTimeSpeed] = useState(1);
+    const [showTimeline, setShowTimeline] = useState(false);
     const [temporalLayer, setTemporalLayer] = useState("none");
-    const [cesiumLoaded, setCesiumLoaded] = useState(false);
-    const [cesiumError, setCesiumError] = useState(null);
-    const [show3D, setShow3D] = useState(true);
-    const [showTerr, setShowTerr] = useState(true);
-    const cesiumRef = useRef(null);
-    const viewerRef = useRef(null);
+    const [liveAircraft, setLiveAircraft] = useState([]);
+    const [liveSatellites, setLiveSatellites] = useState([]);
+    const [liveDataTick, setLiveDataTick] = useState(0);
+    const [selectedFlight, setSelectedFlight] = useState(null);
+    const [selectedSat, setSelectedSat] = useState(null);
+    const [showLivePanel, setShowLivePanel] = useState(false);
+    const canvasRef = useRef(null);
+    const animRef = useRef(null);
+    const srand = (s) => {
+      let x = Math.sin(s * 9301 + 49297) * 49297;
+      return x - Math.floor(x);
+    };
+    const lsrand = (s) => {
+      let x = Math.sin(s * 12345.6789 + 54321) * 54321;
+      return x - Math.floor(x);
+    };
+    useEffect(() => {
+      if (!playing) return;
+      const iv = setInterval(() => {
+        setTimeSlider((t) => {
+          const next = t + timeSpeed;
+          if (next > 2100) {
+            setPlaying(false);
+            return 2100;
+          }
+          if (next < 1900) {
+            setPlaying(false);
+            return 1900;
+          }
+          return next;
+        });
+      }, 100);
+      return () => clearInterval(iv);
+    }, [playing, timeSpeed]);
+    useEffect(() => {
+      if (viewMode !== "globe") return;
+      const iv = setInterval(() => setLiveDataTick((t) => t + 1), 2e3);
+      return () => clearInterval(iv);
+    }, [viewMode]);
+    const generateAircraft = useCallback((tick) => {
+      const airlines = ["UAL", "DAL", "AAL", "SWA", "BAW", "DLH", "AFR", "ANA", "QFA", "UAE", "SIA", "CPA", "JAL", "KAL"];
+      const types = ["B737", "B777", "A320", "A350", "B787", "A380", "B747", "E190"];
+      const craft = [];
+      for (let i = 0; i < 200; i++) {
+        const bLat = (lsrand(i * 3.7) - 0.5) * 140;
+        const bLng = (lsrand(i * 7.3) - 0.5) * 360;
+        const heading = lsrand(i * 11.1) * 360;
+        const mLat = bLat + Math.sin((tick * 5e-3 + i) * 0.1) * lsrand(i * 2.2) * 2;
+        const mLng = (bLng + tick * 8e-3 * (0.5 + lsrand(i * 4.4)) * Math.cos(bLat * Math.PI / 180) + 180) % 360 - 180;
+        craft.push({
+          id: i,
+          callsign: `${airlines[i % airlines.length]}${Math.floor(100 + lsrand(i * 6.6) * 900)}`,
+          lat: Math.max(-85, Math.min(85, mLat)),
+          lng: mLng,
+          alt: Math.floor(28e3 + lsrand(i * 8.8) * 14e3),
+          speed: Math.floor(350 + lsrand(i * 5.5) * 250),
+          heading: (heading + tick * 0.3 * lsrand(i * 13.3)) % 360,
+          type: types[i % types.length],
+          airline: airlines[i % airlines.length],
+          military: lsrand(i * 17.7) > 0.95
+        });
+      }
+      return craft;
+    }, []);
+    const REAL_SATS = useMemo(() => [
+      // NORAD ID, Name, Inclination(°), Period(min), RAAN(°), Altitude(km), Type, Category
+      { norad: "25544", name: "ISS", inc: 51.64, period: 92.68, raan0: 60, alt: 420, type: "LEO", cat: "Station", color: "#00F0FF" },
+      { norad: "20580", name: "HUBBLE", inc: 28.47, period: 95.42, raan0: 120, alt: 540, type: "LEO", cat: "Telescope", color: "#A78BFA" },
+      { norad: "48274", name: "TIANGONG", inc: 41.47, period: 91.47, raan0: 200, alt: 390, type: "LEO", cat: "Station", color: "#EF4444" },
+      { norad: "43013", name: "NOAA-20", inc: 98.74, period: 101.12, raan0: 290, alt: 824, type: "LEO", cat: "Weather", color: "#38BDF8" },
+      { norad: "51769", name: "STARLINK-3301", inc: 53.22, period: 95.66, raan0: 40, alt: 550, type: "LEO", cat: "Comms", color: "#FBBF24" },
+      { norad: "41866", name: "GOES-16", inc: 0.04, period: 1436.1, raan0: 75, alt: 35786, type: "GEO", cat: "Weather", color: "#FFD700" },
+      { norad: "49260", name: "LANDSAT-9", inc: 98.2, period: 98.88, raan0: 340, alt: 705, type: "LEO", cat: "Earth Obs", color: "#34D399" },
+      { norad: "50463", name: "JWST", inc: 1.5, period: 1436.1, raan0: 180, alt: 15e5, type: "L2", cat: "Telescope", color: "#F472B6" },
+      // Starlink constellation (20 sats at various RAAN offsets)
+      ...Array.from({ length: 20 }, (_, i) => ({
+        norad: `5${1770 + i}`,
+        name: `STARLINK-${3302 + i}`,
+        inc: 53 + i % 3 * 0.3,
+        period: 95.6 + Math.random() * 0.4,
+        raan0: (i * 18 + 10) % 360,
+        alt: 540 + Math.random() * 20,
+        type: "LEO",
+        cat: "Starlink",
+        color: "#FBBF2466"
+      })),
+      // GPS constellation (8 sats in 6 orbital planes)
+      ...Array.from({ length: 8 }, (_, i) => ({
+        norad: `${4e4 + i}`,
+        name: `GPS III-${i + 1}`,
+        inc: 55,
+        period: 717.98,
+        raan0: i * 60 % 360,
+        alt: 20180,
+        type: "MEO",
+        cat: "Navigation",
+        color: "#00FF88"
+      })),
+      // Galileo constellation (6 sats)
+      ...Array.from({ length: 6 }, (_, i) => ({
+        norad: `${38e3 + i}`,
+        name: `GALILEO-${201 + i}`,
+        inc: 56,
+        period: 844.7,
+        raan0: (i * 40 + 15) % 360,
+        alt: 23222,
+        type: "MEO",
+        cat: "Navigation",
+        color: "#22D3EE"
+      })),
+      // Sentinel/Earth observation (4 sats)
+      ...Array.from({ length: 4 }, (_, i) => ({
+        norad: `${42e3 + i}`,
+        name: `SENTINEL-${i < 2 ? "2" : "3"}${String.fromCharCode(65 + i)}`,
+        inc: 98.5 + i * 0.2,
+        period: 100.6,
+        raan0: (i * 90 + 30) % 360,
+        alt: 786 + i * 10,
+        type: "LEO",
+        cat: "Earth Obs",
+        color: "#34D399"
+      })),
+      // Iridium NEXT (6 sats)
+      ...Array.from({ length: 6 }, (_, i) => ({
+        norad: `${43070 + i}`,
+        name: `IRIDIUM-${160 + i}`,
+        inc: 86.4,
+        period: 100.4,
+        raan0: (i * 30 + 120) % 360,
+        alt: 780,
+        type: "LEO",
+        cat: "Comms",
+        color: "#818CF8"
+      }))
+    ], []);
+    const generateSatellites = useCallback((tick) => {
+      return REAL_SATS.map((sat, i) => {
+        const meanMotion = 360 / sat.period;
+        const elapsedMinutes = tick * 2;
+        const trueAnomaly = (meanMotion * elapsedMinutes + lsrand(i * 7.7) * 360) % 360 * Math.PI / 180;
+        const raanDrift = sat.type === "GEO" ? 0 : tick * 2e-3 * (sat.inc > 90 ? -1 : 1);
+        const raan = (sat.raan0 + raanDrift) % 360 * Math.PI / 180;
+        const incRad = sat.inc * Math.PI / 180;
+        const sLat = Math.asin(Math.sin(incRad) * Math.sin(trueAnomaly)) * 180 / Math.PI;
+        const sLng = ((sat.raan0 + raanDrift + Math.atan2(Math.cos(incRad) * Math.sin(trueAnomaly), Math.cos(trueAnomaly)) * 180 / Math.PI - tick * 4e-3) % 360 + 540) % 360 - 180;
+        return {
+          id: i,
+          norad: sat.norad,
+          name: sat.name,
+          lat: sLat,
+          lng: sLng,
+          alt: sat.alt,
+          inclination: sat.inc,
+          period: sat.period,
+          type: sat.type,
+          cat: sat.cat,
+          color: sat.color,
+          isStarlink: sat.cat === "Starlink"
+        };
+      });
+    }, [REAL_SATS]);
+    const [selectedSatForTracker, setSelectedSatForTracker] = useState(null);
+    useEffect(() => {
+      if (overlay === "flights") setLiveAircraft(generateAircraft(liveDataTick));
+      if (overlay === "satellites") setLiveSatellites(generateSatellites(liveDataTick));
+    }, [liveDataTick, overlay, generateAircraft, generateSatellites]);
     const PLACES = [
       { name: "Eiffel Tower", lat: 48.8584, lng: 2.2945, type: "landmark", icon: "\u{1F5FC}" },
       { name: "Statue of Liberty", lat: 40.6892, lng: -74.0445, type: "landmark", icon: "\u{1F5FD}" },
-      { name: "Great Wall of China", lat: 40.4319, lng: 116.5704, type: "landmark", icon: "\u{1F3EF}" },
-      { name: "Pyramids of Giza", lat: 29.9792, lng: 31.1342, type: "landmark", icon: "\u{1F3DB}\uFE0F" },
+      { name: "Great Wall", lat: 40.4319, lng: 116.5704, type: "landmark", icon: "\u{1F3EF}" },
+      { name: "Pyramids", lat: 29.9792, lng: 31.1342, type: "landmark", icon: "\u{1F3DB}\uFE0F" },
       { name: "Taj Mahal", lat: 27.1751, lng: 78.0421, type: "landmark", icon: "\u{1F54C}" },
       { name: "Colosseum", lat: 41.8902, lng: 12.4922, type: "landmark", icon: "\u{1F3DF}\uFE0F" },
       { name: "Mount Fuji", lat: 35.3606, lng: 138.7274, type: "nature", icon: "\u{1F5FB}" },
       { name: "Grand Canyon", lat: 36.1069, lng: -112.1129, type: "nature", icon: "\u{1F3DC}\uFE0F" },
-      { name: "Machu Picchu", lat: -13.1631, lng: -72.545, type: "landmark", icon: "\u{1F3D4}\uFE0F" },
-      { name: "Sydney Opera House", lat: -33.8568, lng: 151.2153, type: "landmark", icon: "\u{1F3AD}" },
-      { name: "Saint Marys GA", lat: 30.7309, lng: -81.5465, type: "city", icon: "\u{1F4CD}" },
-      { name: "New York City", lat: 40.7128, lng: -74.006, type: "city", icon: "\u{1F3D9}\uFE0F" },
+      { name: "Saint Marys, GA", lat: 30.7309, lng: -81.5465, type: "city", icon: "\u{1F4CD}" },
+      { name: "New York", lat: 40.7128, lng: -74.006, type: "city", icon: "\u{1F3D9}\uFE0F" },
       { name: "Tokyo", lat: 35.6762, lng: 139.6503, type: "city", icon: "\u{1F5FC}" },
       { name: "London", lat: 51.5074, lng: -0.1278, type: "city", icon: "\u{1F1EC}\u{1F1E7}" },
-      { name: "Dubai", lat: 25.2048, lng: 55.2708, type: "city", icon: "\u{1F3D7}\uFE0F" },
-      { name: "San Francisco", lat: 37.7749, lng: -122.4194, type: "city", icon: "\u{1F309}" },
-      { name: "Paris", lat: 48.8566, lng: 2.3522, type: "city", icon: "\u{1F5FC}" },
-      { name: "Kings Bay Naval Base", lat: 30.7966, lng: -81.5631, type: "landmark", icon: "\u2693" }
+      { name: "Dubai", lat: 25.2048, lng: 55.2708, type: "city", icon: "\u{1F3D7}\uFE0F" }
     ];
-    useEffect(() => {
-      if (viewMode !== "cesium" || cesiumLoaded) return;
-      if (!document.getElementById("cesium-css")) {
-        const css = document.createElement("link");
-        css.id = "cesium-css";
-        css.rel = "stylesheet";
-        css.href = "https://cesium.com/downloads/cesiumjs/releases/1.124/Build/Cesium/Widgets/widgets.css";
-        document.head.appendChild(css);
-      }
-      if (window.Cesium) {
-        setCesiumLoaded(true);
-        return;
-      }
-      if (!document.getElementById("cesium-js")) {
-        const s = document.createElement("script");
-        s.id = "cesium-js";
-        s.src = "https://cesium.com/downloads/cesiumjs/releases/1.124/Build/Cesium/Cesium.js";
-        s.onload = () => setCesiumLoaded(true);
-        s.onerror = () => setCesiumError("Failed to load CesiumJS");
-        document.head.appendChild(s);
-      }
-    }, [viewMode, cesiumLoaded]);
-    useEffect(() => {
-      if (!cesiumLoaded || !cesiumRef.current || viewMode !== "cesium" || viewerRef.current) return;
-      try {
-        const C = window.Cesium;
-        C.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3ZjQ4ZTI1Zi05MjUzLTRhYjQtYTdlYS1lMGUzMmM4ZjI1MmIiLCJpZCI6MjU5LCJpYXQiOjE3MjQ5NTcyMjR9.demo";
-        const v = new C.Viewer(cesiumRef.current, {
-          terrain: C.Terrain.fromWorldTerrain(),
-          animation: false,
-          baseLayerPicker: false,
-          fullscreenButton: false,
-          vrButton: false,
-          geocoder: false,
-          homeButton: false,
-          infoBox: true,
-          sceneModePicker: false,
-          selectionIndicator: true,
-          timeline: false,
-          navigationHelpButton: false,
-          creditContainer: document.createElement("div")
-        });
-        try {
-          v.scene.primitives.add(C.Cesium3DTileset.fromIonAssetId(96188));
-        } catch {
-        }
-        v.scene.globe.enableLighting = true;
-        v.scene.globe.depthTestAgainstTerrain = true;
-        v.scene.fog.density = 2e-4;
-        v.camera.flyTo({ destination: C.Cartesian3.fromDegrees(lng, lat, 15e3), orientation: { heading: 0, pitch: C.Math.toRadians(-35), roll: 0 }, duration: 0 });
-        v.camera.changed.addEventListener(() => {
-          try {
-            const c = C.Cartographic.fromCartesian(v.camera.position);
-            setLat(C.Math.toDegrees(c.latitude));
-            setLng(C.Math.toDegrees(c.longitude));
-          } catch {
-          }
-        });
-        viewerRef.current = v;
-      } catch (e) {
-        setCesiumError(e.message);
-      }
-      return () => {
-        if (viewerRef.current && !viewerRef.current.isDestroyed()) {
-          viewerRef.current.destroy();
-          viewerRef.current = null;
-        }
-      };
-    }, [cesiumLoaded, viewMode]);
-    useEffect(() => {
-      if (!viewerRef.current || !selectedPlace || viewMode !== "cesium") return;
-      const C = window.Cesium;
-      viewerRef.current.camera.flyTo({
-        destination: C.Cartesian3.fromDegrees(selectedPlace.lng, selectedPlace.lat, selectedPlace.type === "city" ? 25e3 : 5e3),
-        orientation: { heading: 0, pitch: C.Math.toRadians(-40), roll: 0 },
-        duration: 2
-      });
-    }, [selectedPlace, viewMode]);
     const searchPlaces = (q) => {
       if (!q.trim()) {
         setSearchResults([]);
         return;
       }
-      setSearchResults(PLACES.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8));
+      const local = PLACES.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())).slice(0, 5);
+      setSearchResults(local);
     };
     const processSearch = () => {
       if (!searchQuery.trim()) return;
-      const m = PLACES.find((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
-      if (m) goToPlace(m);
-      else {
-        setSelectedPlace({ name: searchQuery, lat: 0, lng: 0, type: "search", icon: "\u{1F50D}" });
+      const match = PLACES.find((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+      if (match) {
+        goToPlace(match);
+      } else {
+        const q = encodeURIComponent(searchQuery.trim());
+        setLat(0);
+        setLng(0);
+        setZoom(14);
         setSearchResults([]);
+        if (viewMode !== "globe") {
+          setSelectedPlace({ name: searchQuery, lat: 0, lng: 0, type: "search", icon: "\u{1F50D}" });
+        }
+        setSearchQuery(searchQuery);
       }
     };
-    const goToPlace = (p) => {
-      setLat(p.lat);
-      setLng(p.lng);
-      setZoom(p.type === "city" ? 12 : 16);
-      setSelectedPlace(p);
+    const goToPlace = (place) => {
+      setLat(place.lat);
+      setLng(place.lng);
+      setZoom(place.type === "city" ? 12 : 16);
+      setSelectedPlace(place);
       setSearchResults([]);
-      setSearchQuery(p.name);
+      setSearchQuery(place.name);
+      setFrozen(true);
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+      setRotation({ x: 23.5 + place.lat, y: -place.lng });
+      if (earthZoom < 1.5) setEarthZoom(1.8);
     };
     const getMapUrl = () => {
       const t = viewMode === "satellite" ? "k" : viewMode === "terrain" ? "p" : "m";
-      return selectedPlace?.type === "search" ? `https://maps.google.com/maps?q=${encodeURIComponent(selectedPlace.name)}&z=${zoom}&t=${t}&output=embed` : `https://maps.google.com/maps?q=${lat},${lng}&z=${zoom}&t=${t}&output=embed`;
+      if (selectedPlace?.type === "search") {
+        return `https://maps.google.com/maps?q=${encodeURIComponent(selectedPlace.name)}&z=${zoom}&t=${t}&output=embed`;
+      }
+      return `https://maps.google.com/maps?q=${lat},${lng}&z=${zoom}&t=${t}&output=embed`;
     };
+    const getStreetViewUrl = () => {
+      if (selectedPlace?.type === "search") {
+        return `https://www.google.com/maps/embed/v1/streetview?key=&location=${lat},${lng}&heading=0&pitch=0&fov=90`;
+      }
+      return `https://maps.google.com/maps?q=${lat},${lng}&layer=c&cbll=${lat},${lng}&cbp=12,0,,0,0&output=svembed&z=18`;
+    };
+    const handleMouseDown = (e) => {
+      setDragging(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
+      setFrozen(true);
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+    };
+    const handleMouseMove = (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - dragStart.x;
+      const dy = e.clientY - dragStart.y;
+      setRotation((r) => ({ x: r.x + dy * 0.3, y: r.y + dx * 0.3 }));
+      setDragStart({ x: e.clientX, y: e.clientY });
+    };
+    const handleMouseUp = () => setDragging(false);
+    const handleWheel = (e) => {
+      e.preventDefault();
+      setEarthZoom((z) => Math.max(0.5, Math.min(4, z + (e.deltaY > 0 ? -0.15 : 0.15))));
+    };
+    const toggleFreeze = () => {
+      setFrozen((f) => !f);
+      if (frozen && animRef.current) cancelAnimationFrame(animRef.current);
+    };
+    useEffect(() => {
+      if (viewMode !== "globe" || !canvasRef.current) return;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
+      const dpr = window.devicePixelRatio || 1;
+      const W = canvas.parentElement.clientWidth;
+      const H = canvas.parentElement.clientHeight;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width = W + "px";
+      canvas.style.height = H + "px";
+      ctx.scale(dpr, dpr);
+      const cx = W / 2, cy = H / 2;
+      const R = Math.min(W, H) * 0.38 * earthZoom;
+      const toScreen = (lonDeg, latDeg) => {
+        const lonRad = (lonDeg + rotation.y) * Math.PI / 180;
+        const latRad = (latDeg + rotation.x - 23.5) * Math.PI / 180;
+        const x3d = Math.cos(latRad) * Math.sin(lonRad);
+        const y3d = -Math.sin(latRad);
+        const z3d = Math.cos(latRad) * Math.cos(lonRad);
+        if (z3d < -0.02) return null;
+        return { x: cx + x3d * R, y: cy + y3d * R, z: z3d };
+      };
+      const draw = () => {
+        ctx.clearRect(0, 0, W, H);
+        const bg = ctx.createRadialGradient(cx, cy, R * 0.3, cx, cy, Math.max(W, H));
+        bg.addColorStop(0, "#070718");
+        bg.addColorStop(0.5, "#030308");
+        bg.addColorStop(1, "#010104");
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, W, H);
+        for (let i = 0; i < 400; i++) {
+          const sx = srand(i * 1.37) * W, sy = srand(i * 2.91) * H;
+          const sz = srand(i * 4.13);
+          const twk = 0.5 + Math.sin(Date.now() * 1e-3 + i * 5) * 0.5;
+          const br = (0.15 + sz * 0.85) * twk;
+          const r = sz > 0.93 ? 2 : sz > 0.7 ? 1.2 : 0.6;
+          ctx.fillStyle = `rgba(${srand(i * 7) > 0.85 ? "180,220,255" : "255,255,255"},${br})`;
+          ctx.beginPath();
+          ctx.arc(sx, sy, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        const at1 = ctx.createRadialGradient(cx, cy, R * 0.96, cx, cy, R * 1.12);
+        at1.addColorStop(0, timeOfDay === "night" ? "rgba(30,80,180,0.15)" : "rgba(80,170,255,0.2)");
+        at1.addColorStop(1, "transparent");
+        ctx.fillStyle = at1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R * 1.12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.clip();
+        const ocean = ctx.createRadialGradient(cx - R * 0.25, cy - R * 0.25, R * 0.05, cx, cy, R * 1.1);
+        if (timeOfDay === "night") {
+          ocean.addColorStop(0, "#0a1830");
+          ocean.addColorStop(1, "#020610");
+        } else {
+          ocean.addColorStop(0, "#1a5fa0");
+          ocean.addColorStop(0.5, "#0e3d6e");
+          ocean.addColorStop(1, "#061e3a");
+        }
+        ctx.fillStyle = ocean;
+        ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+        const landmasses = [
+          { name: "NAmerica", pts: [[-168, 66], [-140, 60], [-125, 49], [-122, 37], [-117, 33], [-105, 21], [-87, 13], [-80, 8], [-67, 18], [-55, 47], [-65, 44], [-52, 60], [-75, 63], [-100, 67], [-130, 72], [-168, 66]], biome: "temperate" },
+          { name: "SAmerica", pts: [[-78, 9], [-75, -2], [-70, -9], [-73, -15], [-67, -22], [-58, -34], [-68, -47], [-73, -52], [-74, -43], [-71, -30], [-75, -16], [-80, -2], [-78, 9]], biome: "tropical" },
+          { name: "Europe", pts: [[-9.5, 36], [3, 42], [10, 55], [18, 55], [25, 70], [30, 69], [40, 55], [30, 40], [26, 36], [12, 44], [5, 46], [-5, 44], [-9.5, 36]], biome: "temperate" },
+          { name: "Africa", pts: [[-17, 14], [-13, 22], [-2, 32], [10, 36], [25, 32], [35, 28], [50, 5], [40, -10], [35, -19], [28, -33], [18, -31], [12, -6], [4, 5], [-10, 7], [-17, 14]], biome: "mixed" },
+          { name: "Asia", pts: [[29, 42], [50, 65], [72, 72], [100, 72], [130, 63], [141, 51], [140, 38], [121, 30], [105, 4], [95, 11], [85, 27], [65, 28], [45, 38], [29, 42]], biome: "mixed" },
+          { name: "Australia", pts: [[114, -22], [130, -12], [145, -13], [153, -27], [148, -38], [130, -31], [114, -22]], biome: "arid" },
+          { name: "Antarctica", pts: [[-180, -70], [-120, -68], [-60, -65], [0, -70], [60, -68], [120, -66], [180, -70], [180, -90], [-180, -90], [-180, -70]], biome: "ice" },
+          { name: "Greenland", pts: [[-52, 60], [-22, 73], [-20, 80], [-38, 82], [-55, 77], [-52, 60]], biome: "ice" }
+        ];
+        const biomeColor = (biome, night) => {
+          const yearFactor = Math.max(0, (timeSlider - 1900) / 200);
+          if (biome === "ice") {
+            const melt = Math.min(0.3, yearFactor * 0.3);
+            return night ? `rgba(${140 - melt * 200},${155 - melt * 200},${175 - melt * 200},0.5)` : `rgba(${220 - melt * 200},${230 - melt * 200},${240 - melt * 200},0.85)`;
+          }
+          if (biome === "tropical") return night ? "rgba(10,40,15,0.7)" : "rgba(30,120,40,0.8)";
+          if (biome === "arid") return night ? "rgba(50,35,15,0.65)" : "rgba(180,150,90,0.8)";
+          if (biome === "temperate") {
+            const urban = Math.min(0.3, yearFactor * 0.2);
+            return night ? `rgba(${15 + urban * 80},${40 - urban * 20},${20 - urban * 10},0.65)` : `rgba(${60 + urban * 60},${130 - urban * 30},${50 + urban * 20},0.8)`;
+          }
+          return night ? "rgba(20,45,20,0.65)" : "rgba(70,130,60,0.8)";
+        };
+        landmasses.forEach((land) => {
+          ctx.beginPath();
+          let started = false;
+          land.pts.forEach(([lo, la]) => {
+            const p = toScreen(lo, la);
+            if (p && p.z > 0) {
+              if (!started) {
+                ctx.moveTo(p.x, p.y);
+                started = true;
+              } else ctx.lineTo(p.x, p.y);
+            }
+          });
+          ctx.closePath();
+          ctx.fillStyle = biomeColor(land.biome, timeOfDay === "night");
+          ctx.fill();
+          ctx.strokeStyle = timeOfDay === "night" ? "rgba(40,80,60,0.3)" : "rgba(80,120,60,0.2)";
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+        });
+        if (temporalLayer === "temperature") {
+          const anomaly = (timeSlider - 1950) * 0.015;
+          for (let la = -80; la <= 80; la += 10) {
+            for (let lo = -180; lo <= 180; lo += 15) {
+              const p = toScreen(lo, la);
+              if (p && p.z > 0.1) {
+                const localAnomaly = anomaly * (1 + Math.abs(la) / 90 * 0.5) + srand(la * 100 + lo) * 0.3;
+                const r = Math.min(255, Math.max(0, localAnomaly > 0 ? 180 + localAnomaly * 40 : 100));
+                const b = Math.min(255, Math.max(0, localAnomaly < 0 ? 180 - localAnomaly * 40 : 100));
+                const g = 80;
+                const sz = 8 * earthZoom;
+                ctx.fillStyle = `rgba(${Math.floor(r)},${g},${Math.floor(b)},${0.2 + Math.abs(localAnomaly) * 0.05})`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, sz, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+          }
+        }
+        if (temporalLayer === "seaLevel") {
+          const rise = Math.max(0, (timeSlider - 2e3) * 4e-3);
+          if (rise > 0) {
+            const coastalCities = [[40.7, -74, "NYC"], [25.8, -80, "Miami"], [22.3, 114.2, "HK"], [-6.2, 106.8, "Jakarta"], [13.7, 100.5, "Bangkok"], [31.2, 121.5, "Shanghai"], [51.5, -0.1, "London"], [1.3, 103.8, "Singapore"]];
+            coastalCities.forEach(([cLa, cLo, name]) => {
+              const p = toScreen(cLo, cLa);
+              if (p && p.z > 0.1) {
+                const floodR = rise * 8 * earthZoom;
+                const fg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, floodR);
+                fg.addColorStop(0, `rgba(0,100,200,${Math.min(0.5, rise * 0.1)})`);
+                fg.addColorStop(1, "transparent");
+                ctx.fillStyle = fg;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, floodR, 0, Math.PI * 2);
+                ctx.fill();
+                if (earthZoom > 1.2) {
+                  ctx.font = `${8 * Math.min(earthZoom, 2)}px sans-serif`;
+                  ctx.fillStyle = `rgba(100,200,255,${Math.min(0.8, rise * 0.15)})`;
+                  ctx.textAlign = "center";
+                  ctx.fillText(`${name} +${rise.toFixed(1)}m`, p.x, p.y + floodR + 10);
+                  ctx.textAlign = "start";
+                }
+              }
+            });
+          }
+        }
+        if (temporalLayer === "population") {
+          const yearPop = Math.max(0.5, (timeSlider - 1900) / 50);
+          const cities = [[35.7, 139.7, 5], [28.6, 77.2, 5], [31.2, 121.5, 5], [40.7, -74, 4], [-23.5, -46.6, 4], [19.4, -99.1, 3.5], [6.5, 3.4, 3], [30.7, -81.5, 1]];
+          cities.forEach(([cLa, cLo, base]) => {
+            const p = toScreen(cLo, cLa);
+            if (p && p.z > 0.05) {
+              const intensity = base * yearPop;
+              const pg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, intensity * 4 * earthZoom);
+              pg.addColorStop(0, `rgba(255,100,50,${Math.min(0.6, intensity * 0.04)})`);
+              pg.addColorStop(0.5, `rgba(255,60,200,${Math.min(0.3, intensity * 0.02)})`);
+              pg.addColorStop(1, "transparent");
+              ctx.fillStyle = pg;
+              ctx.fillRect(p.x - intensity * 6, p.y - intensity * 6, intensity * 12, intensity * 12);
+            }
+          });
+        }
+        if (temporalLayer === "urbanization") {
+          const urbanLevel = Math.max(0, (timeSlider - 1950) / 30);
+          const metros = [[40.7, -74], [51.5, -0.1], [35.7, 139.7], [31.2, 121.5], [28.6, 77.2], [-23.5, -46.6], [30.7, -81.5], [25.2, 55.3], [37.8, -122.4], [34, -118.2]];
+          metros.forEach(([mLa, mLo], idx) => {
+            const p = toScreen(mLo, mLa);
+            if (p && p.z > 0.1) {
+              const spread = urbanLevel * (3 + srand(idx * 7) * 3) * earthZoom;
+              ctx.fillStyle = `rgba(255,200,50,${Math.min(0.15, urbanLevel * 0.01)})`;
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, spread, 0, Math.PI * 2);
+              ctx.fill();
+              for (let g = 0; g < Math.min(8, urbanLevel); g++) {
+                const gx = p.x + (srand(idx * 100 + g * 3) - 0.5) * spread * 2;
+                const gy = p.y + (srand(idx * 200 + g * 7) - 0.5) * spread * 2;
+                ctx.strokeStyle = `rgba(255,220,100,${Math.min(0.1, urbanLevel * 5e-3)})`;
+                ctx.lineWidth = 0.5;
+                ctx.beginPath();
+                ctx.moveTo(gx - spread * 0.3, gy);
+                ctx.lineTo(gx + spread * 0.3, gy);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(gx, gy - spread * 0.3);
+                ctx.lineTo(gx, gy + spread * 0.3);
+                ctx.stroke();
+              }
+            }
+          });
+        }
+        ctx.lineWidth = 0.3;
+        for (let la = -80; la <= 80; la += 30) {
+          ctx.beginPath();
+          let s = false;
+          ctx.strokeStyle = la === 0 ? "rgba(255,80,80,0.1)" : "rgba(100,140,180,0.05)";
+          for (let lo = -180; lo <= 180; lo += 3) {
+            const p = toScreen(lo, la);
+            if (p) {
+              if (!s) {
+                ctx.moveTo(p.x, p.y);
+                s = true;
+              } else ctx.lineTo(p.x, p.y);
+            } else s = false;
+          }
+          ctx.stroke();
+        }
+        if (timeOfDay === "night") {
+          const cities = [[40.7, -74, 4], [51.5, -0.1, 3.5], [35.7, 139.7, 4], [48.9, 2.3, 3], [55.8, 37.6, 3], [-23.5, -46.6, 3.5], [28.6, 77.2, 3.5], [31.2, 121.5, 4], [39.9, 116.4, 4], [34, -118.2, 3], [22.3, 114.2, 3], [1.3, 103.8, 2], [30.7, -81.5, 1.5]];
+          cities.forEach(([cLa, cLo, sz]) => {
+            const p = toScreen(cLo, cLa);
+            if (p && p.z > 0) {
+              const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz * 6 * earthZoom);
+              g.addColorStop(0, `rgba(255,220,100,${0.5 + sz * 0.05})`);
+              g.addColorStop(0.5, "rgba(255,180,60,0.15)");
+              g.addColorStop(1, "transparent");
+              ctx.fillStyle = g;
+              ctx.fillRect(p.x - sz * 8, p.y - sz * 8, sz * 16, sz * 16);
+            }
+          });
+        }
+        if (overlay === "flights" && liveAircraft.length > 0) {
+          liveAircraft.forEach((ac) => {
+            const p = toScreen(ac.lng, ac.lat);
+            if (p && p.z > 0.05) {
+              const sz = Math.max(2, 3 * earthZoom);
+              ctx.save();
+              ctx.translate(p.x, p.y);
+              ctx.rotate(ac.heading * Math.PI / 180);
+              ctx.beginPath();
+              ctx.moveTo(0, -sz * 1.8);
+              ctx.lineTo(-sz, sz);
+              ctx.lineTo(sz, sz);
+              ctx.closePath();
+              ctx.fillStyle = ac.military ? "#FF4444cc" : "#00F0FFcc";
+              ctx.fill();
+              ctx.restore();
+            }
+          });
+          ctx.font = "bold 10px sans-serif";
+          ctx.fillStyle = "rgba(0,240,255,0.7)";
+          ctx.fillText(`\u2708 ${liveAircraft.length} aircraft`, 10, 20);
+        }
+        if (overlay === "satellites" && liveSatellites.length > 0) {
+          liveSatellites.filter((s) => !s.isStarlink && s.type !== "L2" && s.cat !== "Starlink").forEach((sat) => {
+            ctx.beginPath();
+            let first = true;
+            for (let deg = 0; deg < 360; deg += 6) {
+              const tRad = deg * Math.PI / 180, iRad = sat.inclination * Math.PI / 180;
+              const tLat = Math.asin(Math.sin(iRad) * Math.sin(tRad)) * 180 / Math.PI;
+              const tLng = ((sat.lng + Math.atan2(Math.cos(iRad) * Math.sin(tRad), Math.cos(tRad)) * 180 / Math.PI) % 360 + 540) % 360 - 180;
+              const pt = toScreen(tLng, tLat);
+              if (pt && pt.z > 0.05) {
+                if (first) {
+                  ctx.moveTo(pt.x, pt.y);
+                  first = false;
+                } else ctx.lineTo(pt.x, pt.y);
+              } else first = true;
+            }
+            ctx.strokeStyle = (sat.color || "#FFD700") + "18";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          });
+          liveSatellites.forEach((sat) => {
+            if (sat.type === "L2") return;
+            const p = toScreen(sat.lng, sat.lat);
+            if (p && p.z > 0.05) {
+              const isKey = ["ISS", "HUBBLE", "TIANGONG", "NOAA-20", "GOES-16", "LANDSAT-9"].includes(sat.name);
+              const sz = isKey ? 4 * earthZoom : sat.isStarlink ? 1 * earthZoom : 2 * earthZoom;
+              const col = sat.color || "#FFD700";
+              if (isKey) {
+                const gl = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz * 4);
+                gl.addColorStop(0, col + "44");
+                gl.addColorStop(1, "transparent");
+                ctx.fillStyle = gl;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, sz * 4, 0, Math.PI * 2);
+                ctx.fill();
+              }
+              ctx.fillStyle = col + "cc";
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, sz, 0, Math.PI * 2);
+              ctx.fill();
+              if (sat.cat === "Station") {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, sz * 2.5 + Math.sin(Date.now() / 500) * 2, 0, Math.PI * 2);
+                ctx.strokeStyle = col + "44";
+                ctx.lineWidth = 1;
+                ctx.stroke();
+              }
+              if (earthZoom > 1 && !sat.isStarlink) {
+                ctx.font = `bold ${Math.max(8, 7 * Math.min(earthZoom, 2.5))}px monospace`;
+                ctx.fillStyle = col + "bb";
+                ctx.textAlign = "center";
+                ctx.fillText(sat.name, p.x, p.y + sz + 10);
+                if (earthZoom > 1.8 && isKey) {
+                  ctx.font = `${6 * Math.min(earthZoom, 2)}px monospace`;
+                  ctx.fillStyle = col + "66";
+                  ctx.fillText(`${sat.alt.toLocaleString()}km \xB7 ${sat.type} \xB7 NORAD ${sat.norad}`, p.x, p.y + sz + 20);
+                }
+                ctx.textAlign = "start";
+              }
+            }
+          });
+          const leoCt = liveSatellites.filter((s) => s.type === "LEO").length, meoCt = liveSatellites.filter((s) => s.type === "MEO").length, geoCt = liveSatellites.filter((s) => s.type === "GEO").length;
+          ctx.font = "bold 10px sans-serif";
+          ctx.fillStyle = "rgba(255,200,50,0.8)";
+          ctx.fillText(`\u{1F6F0} ${liveSatellites.length} satellites \xB7 NORAD Catalog`, 10, 20);
+          ctx.font = "9px monospace";
+          ctx.fillStyle = "rgba(255,200,50,0.5)";
+          ctx.fillText(`LEO:${leoCt} MEO:${meoCt} GEO:${geoCt} \xB7 Synced with Satellite Tracker`, 10, 34);
+          [{ c: "#00F0FF", l: "ISS" }, { c: "#A78BFA", l: "Hubble" }, { c: "#EF4444", l: "Tiangong" }, { c: "#FBBF24", l: "Starlink" }, { c: "#00FF88", l: "GPS" }, { c: "#22D3EE", l: "Galileo" }].forEach((item, i) => {
+            ctx.fillStyle = item.c + "cc";
+            ctx.beginPath();
+            ctx.arc(16, 50 + i * 13, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(200,200,200,0.5)";
+            ctx.font = "8px monospace";
+            ctx.fillText(item.l, 24, 53 + i * 13);
+          });
+        }
+        const limb = ctx.createRadialGradient(cx, cy, R * 0.6, cx, cy, R);
+        limb.addColorStop(0, "transparent");
+        limb.addColorStop(0.8, "transparent");
+        limb.addColorStop(1, timeOfDay === "night" ? "rgba(0,0,10,0.6)" : "rgba(0,10,30,0.3)");
+        ctx.fillStyle = limb;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.strokeStyle = timeOfDay === "night" ? "rgba(40,100,180,0.35)" : "rgba(100,190,255,0.25)";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.font = "bold 11px 'Space Mono', monospace";
+        ctx.fillStyle = "rgba(0,240,255,0.8)";
+        ctx.fillText(`\u{1F550} ${timeSlider}`, W - 70, H - 12);
+        if (temporalLayer !== "none") {
+          ctx.fillStyle = "rgba(255,200,50,0.7)";
+          ctx.fillText(`\u25CE ${temporalLayer}`, W - 140, H - 12);
+        }
+      };
+      draw();
+      if (!dragging && !frozen) {
+        animRef.current = requestAnimationFrame(function spin() {
+          setRotation((p) => ({ ...p, y: p.y + 0.12 }));
+          animRef.current = requestAnimationFrame(spin);
+        });
+      }
+      return () => {
+        if (animRef.current) cancelAnimationFrame(animRef.current);
+      };
+    }, [viewMode, rotation, earthZoom, dragging, frozen, timeOfDay, overlay, liveAircraft, liveSatellites, timeSlider, temporalLayer, selectedFlight, selectedSat]);
     const overlays = [
       { id: "none", label: "None", icon: "\u25CC" },
       { id: "flights", label: "Live Flights", icon: "\u2708", live: true },
-      { id: "satellites", label: "Satellites", icon: "\u{1F6F0}\uFE0F", live: true },
-      { id: "satTracker", label: "Sat Tracker", icon: "\u{1F6F0}\uFE0F", live: true },
+      { id: "satellites", label: "Satellites", icon: "\u{1F6F0}\uFE0F", live: true, desc: "Live satellite tracking via SatelliteTracker3D" },
+      { id: "satTracker", label: "Satellite Tracker", icon: "\u{1F6F0}\uFE0F", live: true, desc: "Full 3D live tracker (ISS & more)" },
       { id: "weather", label: "Weather", icon: "\u2601" },
       { id: "heatmap", label: "Population", icon: "\u{1F525}" }
     ];
-    return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--border)", background: "var(--bg2)", flexShrink: 0, overflow: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 2, borderRadius: 8, background: "var(--bg3)", padding: 2 } }, [{ id: "cesium", label: "3D Earth", icon: "\u{1F30D}" }, { id: "map", label: "Map", icon: "\u{1F5FA}" }, { id: "satellite", label: "Satellite", icon: "\u{1F6F0}\uFE0F" }, { id: "terrain", label: "Terrain", icon: "\u26F0" }, { id: "street", label: "Street", icon: "\u{1F441}" }, { id: "satTracker", label: "Satellites", icon: "\u{1F6F0}\uFE0F" }].map((m) => /* @__PURE__ */ React.createElement("button", { key: m.id, onClick: () => setViewMode(m.id), style: { padding: "5px 10px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 10, background: viewMode === m.id ? "var(--bg2)" : "transparent", color: viewMode === m.id ? "var(--glow1)" : "#555", fontFamily: "var(--font-body)", fontWeight: viewMode === m.id ? 700 : 400, whiteSpace: "nowrap", boxShadow: viewMode === m.id ? "0 1px 4px rgba(0,0,0,.2)" : "none" } }, m.icon, " ", m.label))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, flex: 1, minWidth: 200 } }, /* @__PURE__ */ React.createElement("input", { value: searchQuery, onChange: (e) => {
-      setSearchQuery(e.target.value);
-      searchPlaces(e.target.value);
-    }, onKeyDown: (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        processSearch();
+    const temporalLayers = [
+      { id: "none", label: "None", icon: "\u25CC" },
+      { id: "temperature", label: "Temperature", icon: "\u{1F321}\uFE0F", desc: "Global temperature anomaly" },
+      { id: "seaLevel", label: "Sea Level", icon: "\u{1F30A}", desc: "Sea level rise projection" },
+      { id: "population", label: "Population", icon: "\u{1F465}", desc: "Population growth density" },
+      { id: "urbanization", label: "Urbanization", icon: "\u{1F3D9}\uFE0F", desc: "Urban sprawl expansion" }
+    ];
+    return /* @__PURE__ */ React.createElement("div", { style: { height: "100%", display: "flex", flexDirection: "column", position: "relative" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "10px 14px", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", borderBottom: "1px solid var(--border)", background: "var(--bg2)", zIndex: 20, flexShrink: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 2, background: "var(--bg3)", borderRadius: 8, padding: 2 } }, [
+      { id: "map", label: "Map", icon: "\u{1F5FA}\uFE0F" },
+      { id: "satellite", label: "Satellite", icon: "\u{1F6F0}\uFE0F" },
+      { id: "terrain", label: "Terrain", icon: "\u26F0\uFE0F" },
+      { id: "street", label: "Street", icon: "\u{1F6B6}" },
+      { id: "globe", label: "4D Globe", icon: "\u{1F30D}" },
+      { id: "satTracker", label: "Satellites", icon: "\u{1F6F0}\uFE0F" },
+      { id: "googleEarth", label: "Earth", icon: "\u{1F310}" }
+    ].map((v) => /* @__PURE__ */ React.createElement("button", { key: v.id, onClick: () => setViewMode(v.id), style: {
+      padding: "5px 10px",
+      borderRadius: 6,
+      border: "none",
+      cursor: "pointer",
+      fontSize: 11,
+      fontWeight: 600,
+      background: viewMode === v.id ? "var(--glow1)" : "transparent",
+      color: viewMode === v.id ? "#000" : "var(--text2)",
+      fontFamily: "var(--font-body)",
+      transition: "all .15s"
+    } }, v.icon, " ", v.label))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, flex: 1, minWidth: 200 } }, /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        value: searchQuery,
+        onChange: (e) => {
+          setSearchQuery(e.target.value);
+          searchPlaces(e.target.value);
+        },
+        onKeyDown: (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            processSearch();
+          }
+        },
+        placeholder: "Search any location...",
+        className: "r-input",
+        style: { flex: 1, fontSize: 11, padding: "6px 10px" }
       }
-    }, placeholder: "Search any location...", className: "r-input", style: { flex: 1, fontSize: 11, padding: "6px 10px" } }), /* @__PURE__ */ React.createElement("button", { onClick: processSearch, style: { padding: "4px 10px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, var(--glow1), var(--glow2))", color: "#000", cursor: "pointer", fontSize: 10, fontWeight: 700 } }, "\u{1F50D}")), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowLayers(!showLayers), className: "r-chip", style: { fontSize: 10, borderColor: showLayers ? "var(--glow1)" : void 0, color: showLayers ? "var(--glow1)" : void 0 } }, "\u25C9 Layers"), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowTimeline(!showTimeline), className: "r-chip", style: { fontSize: 10, borderColor: showTimeline ? "#FBBF24" : void 0, color: showTimeline ? "#FBBF24" : void 0 } }, "\u{1F550} 4D"), viewMode === "cesium" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("button", { onClick: () => setShow3D((b) => !b), className: "r-chip", style: { fontSize: 10, borderColor: show3D ? "#34D399" : void 0, color: show3D ? "#34D399" : void 0 } }, "\u{1F3E2} 3D"), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowTerr((t) => !t), className: "r-chip", style: { fontSize: 10, borderColor: showTerr ? "#F59E0B" : void 0, color: showTerr ? "#F59E0B" : void 0 } }, "\u26F0"))), searchResults.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 55, left: 14, width: 320, maxHeight: 300, overflow: "auto", borderRadius: 12, background: "var(--bg2)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,.5)", zIndex: 25, animation: "fadeSlide .15s ease" } }, searchResults.map((p, i) => /* @__PURE__ */ React.createElement("div", { key: i, onClick: () => goToPlace(p), style: { padding: "10px 14px", cursor: "pointer", display: "flex", gap: 10, alignItems: "center", borderBottom: "1px solid var(--border)" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 20 } }, p.icon), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600 } }, p.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "#555" } }, p.lat.toFixed(4), ", ", p.lng.toFixed(4)))))), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative", overflow: "hidden" } }, viewMode === "cesium" ? /* @__PURE__ */ React.createElement("div", { style: { width: "100%", height: "100%", position: "relative" } }, !cesiumLoaded && !cesiumError && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#000", zIndex: 5 } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 48, height: 48, border: "3px solid var(--glow1)", borderTopColor: "transparent", borderRadius: "50%", margin: "0 auto 12px", animation: "pulse .8s linear infinite" } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--glow1)", fontFamily: "var(--font-mono)" } }, "Loading 3D Earth Engine..."), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "#555", marginTop: 4 } }, "WebGL \xB7 CesiumJS \xB7 Terrain \xB7 3D Buildings \xB7 WGS84"))), cesiumError && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#000", zIndex: 5 } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 8 } }, "\u26A0\uFE0F"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "#EF4444" } }, cesiumError), /* @__PURE__ */ React.createElement("button", { onClick: () => {
-      setCesiumError(null);
-      setCesiumLoaded(false);
-    }, className: "r-btn-primary", style: { fontSize: 11, padding: "8px 16px", marginTop: 10 } }, "Retry"))), /* @__PURE__ */ React.createElement("div", { ref: cesiumRef, style: { width: "100%", height: "100%" } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", background: "var(--bg2)ee", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 14px", fontSize: 10, color: "var(--glow1)", fontFamily: "var(--font-mono)", backdropFilter: "blur(6px)", display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("span", null, "\u{1F30D} 3D Earth"), /* @__PURE__ */ React.createElement("span", { style: { color: "#555" } }, lat.toFixed(4), ", ", lng.toFixed(4)), show3D && /* @__PURE__ */ React.createElement("span", { style: { color: "#34D399" } }, "\u{1F3E2}"), showTerr && /* @__PURE__ */ React.createElement("span", { style: { color: "#F59E0B" } }, "\u26F0")), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 8, right: showLayers ? 236 : 8, display: "flex", flexDirection: "column", gap: 4, zIndex: 10 } }, [{ l: "Home", la: 30.7309, lo: -81.5465, a: 15e3 }, { l: "NYC", la: 40.7128, lo: -74.006, a: 8e3 }, { l: "Tokyo", la: 35.6762, lo: 139.6503, a: 12e3 }, { l: "Dubai", la: 25.2048, lo: 55.2708, a: 1e4 }].map((p) => /* @__PURE__ */ React.createElement("button", { key: p.l, onClick: () => {
-      if (viewerRef.current && window.Cesium) viewerRef.current.camera.flyTo({ destination: window.Cesium.Cartesian3.fromDegrees(p.lo, p.la, p.a), orientation: { heading: 0, pitch: window.Cesium.Math.toRadians(-35), roll: 0 }, duration: 2 });
-      setLat(p.la);
-      setLng(p.lo);
-    }, style: { padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg2)ee", backdropFilter: "blur(4px)", cursor: "pointer", fontSize: 9, color: "#888" } }, "\u{1F4CD} ", p.l)))) : viewMode === "satTracker" ? /* @__PURE__ */ React.createElement("div", { style: { width: "100%", height: "100%", position: "relative", background: "#000" } }, /* @__PURE__ */ React.createElement("iframe", { src: "https://satellitetracker3d.com/track?norad-id=51769", style: { width: "100%", height: "100%", border: "none" }, title: "Live Satellite Tracker", allow: "geolocation; fullscreen; accelerometer; gyroscope" }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 10, left: 10, background: "var(--bg2)ee", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 14px", backdropFilter: "blur(8px)", zIndex: 10 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "#FBBF24", fontFamily: "var(--font-mono)", marginBottom: 6 } }, "\u{1F6F0}\uFE0F Live Tracker"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, flexWrap: "wrap" } }, [{ n: "ISS", id: "25544" }, { n: "Hubble", id: "20580" }, { n: "Tiangong", id: "48274" }, { n: "Starlink", id: "51769" }, { n: "JWST", id: "50463" }].map((s) => /* @__PURE__ */ React.createElement("button", { key: s.id, onClick: () => {
-      const f = document.querySelector('iframe[title="Live Satellite Tracker"]');
-      if (f) f.src = `https://satellitetracker3d.com/track?norad-id=${s.id}`;
-    }, className: "r-chip", style: { fontSize: 8 } }, s.n))))) : viewMode === "street" ? /* @__PURE__ */ React.createElement("div", { style: { width: "100%", height: "100%", position: "relative" } }, /* @__PURE__ */ React.createElement("iframe", { src: `https://maps.google.com/maps?q=${selectedPlace?.type === "search" ? encodeURIComponent(selectedPlace.name) : lat + "," + lng}&layer=c&cbll=${lat},${lng}&cbp=12,0,,0,0&output=svembed&z=18`, style: { width: "100%", height: "100%", border: "none" }, title: "Street View", allow: "geolocation; fullscreen", loading: "lazy" }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", background: "var(--bg2)ee", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 14px", fontSize: 10, color: "var(--glow2)", fontFamily: "var(--font-mono)", backdropFilter: "blur(6px)" } }, "\u{1F441} Street View")) : /* @__PURE__ */ React.createElement("iframe", { src: getMapUrl(), style: { width: "100%", height: "100%", border: "none" }, title: "Google Maps", allow: "geolocation; fullscreen", loading: "lazy" }), showLayers && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 8, right: 8, width: 220, borderRadius: 12, background: "var(--bg2)", border: "1px solid var(--border)", boxShadow: "0 8px 30px rgba(0,0,0,.5)", zIndex: 15, padding: 8, animation: "fadeSlide .15s ease", maxHeight: "80%", overflow: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, fontWeight: 700, color: "var(--glow2)", letterSpacing: ".1em", textTransform: "uppercase", padding: "4px 8px" } }, "Overlays"), overlays.map((o) => /* @__PURE__ */ React.createElement("div", { key: o.id, onClick: () => {
+    ), /* @__PURE__ */ React.createElement("button", { onClick: processSearch, style: { padding: "4px 10px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, var(--glow1), var(--glow2))", color: "#000", cursor: "pointer", fontSize: 10, fontWeight: 700 } }, "\u{1F50D}")), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowLayers(!showLayers), className: "r-chip", style: { fontSize: 10, borderColor: showLayers ? "var(--glow1)" : void 0, color: showLayers ? "var(--glow1)" : void 0 } }, "\u25C9 Layers"), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowTimeline(!showTimeline), className: "r-chip", style: { fontSize: 10, borderColor: showTimeline ? "#FBBF24" : void 0, color: showTimeline ? "#FBBF24" : void 0 } }, "\u{1F550} 4D Time"), viewMode === "globe" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("button", { onClick: toggleFreeze, className: "r-chip", style: { fontSize: 10, borderColor: frozen ? "#F472B6" : "#34D399", color: frozen ? "#F472B6" : "#34D399" } }, frozen ? "\u2744 Frozen" : "\u21BB Rotating"), /* @__PURE__ */ React.createElement("button", { onClick: () => setTimeOfDay((t) => t === "day" ? "night" : "day"), className: "r-chip", style: { fontSize: 10 } }, timeOfDay === "day" ? "\u{1F319}" : "\u2600\uFE0F"))), searchResults.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 55, left: 14, width: 300, maxHeight: 300, overflow: "auto", borderRadius: 12, background: "var(--bg2)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,.5)", zIndex: 25, animation: "fadeSlide .15s ease" } }, searchResults.map((p, i) => /* @__PURE__ */ React.createElement("div", { key: i, onClick: () => goToPlace(p), style: { padding: "10px 14px", cursor: "pointer", display: "flex", gap: 10, alignItems: "center", borderBottom: "1px solid var(--border)" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 18 } }, p.icon), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600 } }, p.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "#555" } }, p.lat.toFixed(4), ", ", p.lng.toFixed(4)))))), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, position: "relative", overflow: "hidden" } }, viewMode === "globe" ? /* @__PURE__ */ React.createElement("canvas", { ref: canvasRef, onMouseDown: handleMouseDown, onMouseMove: handleMouseMove, onMouseUp: handleMouseUp, onMouseLeave: handleMouseUp, onWheel: handleWheel, style: { width: "100%", height: "100%", cursor: dragging ? "grabbing" : "grab" } }) : viewMode === "googleEarth" ? /* @__PURE__ */ React.createElement("div", { style: { width: "100%", height: "100%", position: "relative" } }, /* @__PURE__ */ React.createElement(
+      "iframe",
+      {
+        src: selectedPlace?.type === "search" ? `https://earth.google.com/web/search/${encodeURIComponent(selectedPlace.name)}/` : `https://earth.google.com/web/@${lat},${lng},0a,${Math.max(100, 5e7 / Math.pow(2, zoom))}d,35y,0h,60t,0r`,
+        style: { width: "100%", height: "100%", border: "none" },
+        title: "Google Earth",
+        allow: "geolocation; fullscreen"
+      }
+    ), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", background: "var(--bg2)ee", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 14px", fontSize: 10, color: "var(--glow1)", fontFamily: "var(--font-mono)", backdropFilter: "blur(6px)" } }, "\u{1F310} Google Earth \u2014 ", selectedPlace?.name || `${lat.toFixed(4)}, ${lng.toFixed(4)}`)) : viewMode === "satTracker" ? (
+      /* ═══ LIVE SATELLITE TRACKER ═══ */
+      /* @__PURE__ */ React.createElement("div", { style: { width: "100%", height: "100%", position: "relative", background: "#000" } }, /* @__PURE__ */ React.createElement(
+        "iframe",
+        {
+          src: "https://satellitetracker3d.com/track?norad-id=51769",
+          style: { width: "100%", height: "100%", border: "none" },
+          title: "Live Satellite Tracker",
+          allow: "geolocation; fullscreen; accelerometer; gyroscope",
+          referrerPolicy: "no-referrer-when-downgrade"
+        }
+      ), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 10, left: 10, display: "flex", flexDirection: "column", gap: 6, zIndex: 10 } }, /* @__PURE__ */ React.createElement("div", { style: { background: "var(--bg2)ee", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 14px", backdropFilter: "blur(8px)", boxShadow: "0 4px 20px rgba(0,0,0,.5)" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16 } }, "\u{1F6F0}\uFE0F"), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "#FBBF24", fontFamily: "var(--font-mono)" } }, "Live Satellite Tracker"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "#555" } }, "Powered by SatelliteTracker3D \u2014 Real-time orbital data"))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, fontWeight: 700, color: "var(--glow2)", letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 6 } }, "Quick Track"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, flexWrap: "wrap" } }, [
+        { name: "ISS", norad: "25544" },
+        { name: "Hubble", norad: "20580" },
+        { name: "Tiangong", norad: "48274" },
+        { name: "NOAA-20", norad: "43013" },
+        { name: "Starlink", norad: "51769" },
+        { name: "GOES-16", norad: "41866" },
+        { name: "Landsat 9", norad: "49260" },
+        { name: "JWST", norad: "50463" }
+      ].map((s) => /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          key: s.norad,
+          onClick: () => {
+            const iframe = document.querySelector('iframe[title="Live Satellite Tracker"]');
+            if (iframe) iframe.src = `https://satellitetracker3d.com/track?norad-id=${s.norad}`;
+          },
+          style: {
+            padding: "4px 8px",
+            borderRadius: 6,
+            border: "1px solid var(--border)",
+            background: "var(--bg3)",
+            cursor: "pointer",
+            fontSize: 9,
+            color: "#888",
+            fontFamily: "var(--font-body)",
+            transition: "all .15s"
+          },
+          onMouseEnter: (e) => {
+            e.target.style.borderColor = "#FBBF2466";
+            e.target.style.color = "#FBBF24";
+          },
+          onMouseLeave: (e) => {
+            e.target.style.borderColor = "var(--border)";
+            e.target.style.color = "#888";
+          }
+        },
+        s.name
+      ))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, fontWeight: 700, color: "var(--glow2)", letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 4 } }, "Custom NORAD ID"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement("input", { id: "norad-input", placeholder: "e.g. 25544", className: "r-input", style: { flex: 1, fontSize: 10, padding: "4px 8px", fontFamily: "var(--font-mono)" } }), /* @__PURE__ */ React.createElement("button", { onClick: () => {
+        const val = document.getElementById("norad-input").value.trim();
+        if (val) {
+          const iframe = document.querySelector('iframe[title="Live Satellite Tracker"]');
+          if (iframe) iframe.src = `https://satellitetracker3d.com/track?norad-id=${val}`;
+        }
+      }, style: { padding: "4px 10px", borderRadius: 6, border: "none", background: "linear-gradient(135deg, #FBBF24, var(--glow2))", color: "#000", cursor: "pointer", fontSize: 9, fontWeight: 700 } }, "Track"))))), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", bottom: 12, right: 12, zIndex: 10 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => window.open("https://satellitetracker3d.com/track?norad-id=51769", "_blank"), style: { padding: "6px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg2)ee", cursor: "pointer", fontSize: 10, color: "#FBBF24", fontFamily: "var(--font-body)", backdropFilter: "blur(8px)" } }, "Open Full Tracker \u2197")))
+    ) : viewMode === "street" ? /* @__PURE__ */ React.createElement("div", { style: { width: "100%", height: "100%", position: "relative" } }, /* @__PURE__ */ React.createElement("iframe", { src: `https://maps.google.com/maps?q=${selectedPlace?.type === "search" ? encodeURIComponent(selectedPlace.name) : lat + "," + lng}&layer=c&cbll=${lat},${lng}&cbp=12,0,,0,0&output=svembed&z=18`, style: { width: "100%", height: "100%", border: "none" }, title: "Street View", allow: "geolocation; fullscreen", loading: "lazy" }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", background: "var(--bg2)ee", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 14px", fontSize: 10, color: "var(--glow2)", fontFamily: "var(--font-mono)", backdropFilter: "blur(6px)" } }, "\u{1F441} Street View \u2014 ", selectedPlace?.name || `${lat.toFixed(4)}, ${lng.toFixed(4)}`)) : /* @__PURE__ */ React.createElement("iframe", { src: getMapUrl(), style: { width: "100%", height: "100%", border: "none" }, title: "Google Maps", allow: "geolocation; fullscreen", loading: "lazy" }), showLayers && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 8, right: 8, width: 220, borderRadius: 12, background: "var(--bg2)", border: "1px solid var(--border)", boxShadow: "0 8px 30px rgba(0,0,0,.5)", zIndex: 15, padding: 8, animation: "fadeSlide .15s ease" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, fontWeight: 700, color: "var(--glow2)", letterSpacing: ".1em", textTransform: "uppercase", padding: "4px 8px" } }, "Overlays"), overlays.map((o) => /* @__PURE__ */ React.createElement("div", { key: o.id, onClick: () => {
       if (o.id === "satTracker") {
         setViewMode("satTracker");
         setOverlay("none");
-      } else setOverlay(o.id);
-    }, style: { padding: "6px 10px", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, background: overlay === o.id ? "rgba(0,240,255,.06)" : "transparent", fontSize: 11, borderLeft: overlay === o.id ? "2px solid var(--glow1)" : "2px solid transparent" } }, /* @__PURE__ */ React.createElement("span", null, o.icon), /* @__PURE__ */ React.createElement("span", { style: { color: overlay === o.id ? "var(--glow1)" : "#888", fontWeight: overlay === o.id ? 600 : 400 } }, o.label), o.live && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 7, color: "#00FF88", background: "#00FF8818", padding: "1px 4px", borderRadius: 3, fontWeight: 700 } }, "LIVE"))), viewMode === "cesium" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, fontWeight: 700, color: "#34D399", letterSpacing: ".1em", textTransform: "uppercase", padding: "8px 8px 4px", borderTop: "1px solid var(--border)", marginTop: 4 } }, "3D Settings"), /* @__PURE__ */ React.createElement("div", { onClick: () => setShow3D((b) => !b), style: { padding: "6px 10px", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, fontSize: 11 } }, /* @__PURE__ */ React.createElement("span", null, "\u{1F3E2}"), /* @__PURE__ */ React.createElement("span", { style: { color: show3D ? "#34D399" : "#555" } }, "3D Buildings"), /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto", fontSize: 8, color: show3D ? "#34D399" : "#555" } }, show3D ? "ON" : "OFF")), /* @__PURE__ */ React.createElement("div", { onClick: () => setShowTerr((t) => !t), style: { padding: "6px 10px", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, fontSize: 11 } }, /* @__PURE__ */ React.createElement("span", null, "\u26F0"), /* @__PURE__ */ React.createElement("span", { style: { color: showTerr ? "#F59E0B" : "#555" } }, "Terrain"), /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto", fontSize: 8, color: showTerr ? "#F59E0B" : "#555" } }, showTerr ? "ON" : "OFF")))), showTimeline && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", bottom: 0, left: 0, right: 0, background: "var(--bg2)ee", borderTop: "1px solid var(--border)", padding: "8px 14px", zIndex: 15, backdropFilter: "blur(8px)" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setPlaying(!playing), style: { background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", fontSize: 12, color: "#FBBF24", padding: "3px 8px" } }, playing ? "\u23F8" : "\u25B6"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16, fontWeight: 800, color: "#FBBF24", fontFamily: "var(--font-mono)", width: 50 } }, timeSlider), /* @__PURE__ */ React.createElement("input", { type: "range", min: 1900, max: 2100, value: timeSlider, onChange: (e) => setTimeSlider(parseInt(e.target.value)), style: { flex: 1, accentColor: "#FBBF24" } }))), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", bottom: showTimeline ? 48 : 8, left: 12, fontSize: 9, fontFamily: "var(--font-mono)", color: "#555", background: "var(--bg2)cc", padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)" } }, lat.toFixed(4), ", ", lng.toFixed(4), " \xB7 ", viewMode)));
+      } else {
+        setOverlay(o.id);
+      }
+    }, style: {
+      padding: "6px 10px",
+      borderRadius: 6,
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      background: overlay === o.id ? "rgba(0,240,255,.06)" : "transparent",
+      fontSize: 11,
+      borderLeft: overlay === o.id ? "2px solid var(--glow1)" : "2px solid transparent"
+    } }, /* @__PURE__ */ React.createElement("span", null, o.icon), /* @__PURE__ */ React.createElement("span", { style: { color: overlay === o.id ? "var(--glow1)" : "#888", fontWeight: overlay === o.id ? 600 : 400 } }, o.label), o.live && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 7, color: "#00FF88", background: "#00FF8818", padding: "1px 4px", borderRadius: 3, fontWeight: 700 } }, "LIVE"))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, fontWeight: 700, color: "#FBBF24", letterSpacing: ".1em", textTransform: "uppercase", padding: "8px 8px 4px", borderTop: "1px solid var(--border)", marginTop: 4 } }, "4D Temporal"), temporalLayers.map((t) => /* @__PURE__ */ React.createElement("div", { key: t.id, onClick: () => setTemporalLayer(t.id), style: {
+      padding: "6px 10px",
+      borderRadius: 6,
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      background: temporalLayer === t.id ? "rgba(251,191,36,.06)" : "transparent",
+      fontSize: 11,
+      borderLeft: temporalLayer === t.id ? "2px solid #FBBF24" : "2px solid transparent"
+    } }, /* @__PURE__ */ React.createElement("span", null, t.icon), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { style: { color: temporalLayer === t.id ? "#FBBF24" : "#888", fontWeight: temporalLayer === t.id ? 600 : 400 } }, t.label), t.desc && temporalLayer === t.id && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8, color: "#555", marginTop: 1 } }, t.desc))))), showTimeline && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", bottom: 12, left: 12, right: 12, borderRadius: 12, background: "var(--bg2)ee", border: "1px solid var(--border)", boxShadow: "0 8px 30px rgba(0,0,0,.5)", zIndex: 15, padding: "12px 16px", backdropFilter: "blur(10px)", animation: "fadeSlide .15s ease" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: "#FBBF24", letterSpacing: ".1em", textTransform: "uppercase", fontFamily: "var(--font-mono)" } }, "4D Timeline"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 20, fontWeight: 800, color: "var(--glow1)", fontFamily: "var(--font-mono)" } }, timeSlider)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setTimeSpeed(-5), className: "r-chip", style: { fontSize: 9, padding: "3px 6px" } }, "\u23EA"), /* @__PURE__ */ React.createElement("button", { onClick: () => setTimeSpeed(-1), className: "r-chip", style: { fontSize: 9, padding: "3px 6px" } }, "\u25C1"), /* @__PURE__ */ React.createElement("button", { onClick: () => setPlaying(!playing), className: "r-chip", style: { fontSize: 9, padding: "3px 8px", borderColor: playing ? "#F472B6" : "#34D399", color: playing ? "#F472B6" : "#34D399" } }, playing ? "\u23F8" : "\u25B6"), /* @__PURE__ */ React.createElement("button", { onClick: () => setTimeSpeed(1), className: "r-chip", style: { fontSize: 9, padding: "3px 6px" } }, "\u25B7"), /* @__PURE__ */ React.createElement("button", { onClick: () => setTimeSpeed(5), className: "r-chip", style: { fontSize: 9, padding: "3px 6px" } }, "\u23E9"))), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "range",
+        min: "1900",
+        max: "2100",
+        value: timeSlider,
+        onChange: (e) => setTimeSlider(parseInt(e.target.value)),
+        style: { width: "100%", height: 6, borderRadius: 3, appearance: "none", background: `linear-gradient(90deg, #34D399 0%, #FBBF24 50%, #F472B6 100%)`, cursor: "pointer", outline: "none" }
+      }
+    ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 8, color: "#555", fontFamily: "var(--font-mono)", marginTop: 4 } }, /* @__PURE__ */ React.createElement("span", null, "1900"), /* @__PURE__ */ React.createElement("span", null, "1950"), /* @__PURE__ */ React.createElement("span", null, "2000"), /* @__PURE__ */ React.createElement("span", null, "2025"), /* @__PURE__ */ React.createElement("span", null, "2050"), /* @__PURE__ */ React.createElement("span", null, "2100")), temporalLayer !== "none" && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 6, fontSize: 9, color: "#888", textAlign: "center" } }, "Viewing: ", /* @__PURE__ */ React.createElement("span", { style: { color: "#FBBF24", fontWeight: 600 } }, temporalLayer), " \u2014 drag slider or press play to animate through time")), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", right: 12, bottom: showTimeline ? 110 : 50, display: "flex", flexDirection: "column", gap: 2, zIndex: 10 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => viewMode === "globe" ? setEarthZoom((z) => Math.min(4, z + 0.2)) : setZoom((z) => Math.min(20, z + 1)), style: { width: 32, height: 32, borderRadius: "8px 8px 0 0", background: "var(--bg2)", border: "1px solid var(--border)", cursor: "pointer", fontSize: 16, color: "var(--text)", display: "flex", alignItems: "center", justifyContent: "center" } }, "+"), /* @__PURE__ */ React.createElement("button", { onClick: () => viewMode === "globe" ? setEarthZoom((z) => Math.max(0.5, z - 0.2)) : setZoom((z) => Math.max(1, z - 1)), style: { width: 32, height: 32, borderRadius: "0 0 8px 8px", background: "var(--bg2)", border: "1px solid var(--border)", cursor: "pointer", fontSize: 16, color: "var(--text)", display: "flex", alignItems: "center", justifyContent: "center" } }, "\u2212")), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", bottom: showTimeline ? 100 : 8, left: 12, fontSize: 9, fontFamily: "var(--font-mono)", color: "#555", background: "var(--bg2)", padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)" } }, lat.toFixed(4), ", ", lng.toFixed(4), " \xB7 ", viewMode === "globe" ? `${(earthZoom * 100).toFixed(0)}%` : `z${zoom}`)));
   }
   function AgentHubPanel({ onNavigate }) {
     const agentSections = [
