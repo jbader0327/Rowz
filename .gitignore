@@ -1,3 +1,3 @@
-.DS_Store
+-e .DS_Store
 node_modules/
 .env
