@@ -2,12 +2,15 @@
   publish = "."
   command = "echo done"
   functions = "netlify/functions"
+
 [functions]
   node_bundler = "esbuild"
+
 [[redirects]]
   from = "/api/chat"
   to = "/.netlify/functions/chat"
   status = 200
+
 [[redirects]]
   from = "/api/v1/chat"
   to = "/.netlify/functions/chat"
