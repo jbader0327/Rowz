@@ -70,6 +70,38 @@ window.AgentEngine = {
         });
       }
     } catch(e) {}
+    // Inject real platform data
+    try {
+      var smb = JSON.parse(localStorage.getItem("rowzr_smb") || "{}");
+      if (smb.leads && smb.leads.length > 0) {
+        enhanced += "\n\nBUSINESS DATA: " + smb.leads.length + " leads, pipeline value $" + smb.leads.reduce(function(s,l){return s+(l.value||0)},0).toLocaleString();
+      }
+    } catch(e) {}
+    try {
+      var farm = JSON.parse(localStorage.getItem("rowzr_farm") || "{}");
+      if (farm.fields && farm.fields.length > 0) {
+        enhanced += "\nFARM DATA: " + farm.fields.length + " fields, " + (farm.totalAcres||0) + " acres";
+      }
+    } catch(e) {}
+    try {
+      var mood = JSON.parse(localStorage.getItem("rowzr_mood") || "{}");
+      if (mood.entries && mood.entries.length > 0) {
+        var avg = mood.entries.slice(0,7).reduce(function(s,e2){return s+e2.level},0) / Math.min(mood.entries.length,7);
+        enhanced += "\nWELLNESS: " + mood.entries.length + " mood entries, 7-day avg " + avg.toFixed(1) + "/5";
+      }
+    } catch(e) {}
+    try {
+      var care = JSON.parse(localStorage.getItem("rowzr_care") || "{}");
+      if (care.medications && care.medications.length > 0) {
+        enhanced += "\nCARE: " + care.medications.length + " medications tracked";
+      }
+    } catch(e) {}
+    try {
+      var poly = JSON.parse(localStorage.getItem("rowzr_poly") || "{}");
+      if (poly.positions && poly.positions.length > 0) {
+        enhanced += "\nTRADING: " + poly.positions.length + " Polymarket positions, $" + poly.balance.toFixed(0) + " balance";
+      }
+    } catch(e) {}
     return enhanced;
   },
   // Parallel execution — run multiple tasks at once
@@ -168,13 +200,53 @@ window.AgentEngine = {
     }
   };
 
+  // Auto-detect if API is available on first load
+  setTimeout(function() {
+    var cfg = window.RowzrBackend.getConfig();
+    if (!cfg.key && cfg.provider !== "ollama") {
+      // Check if Netlify function exists
+      fetch("/.netlify/functions/chat", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({messages:[{role:"user",content:"test"}]}) })
+        .then(function(r) {
+          if (r.status === 404 || r.status === 401) {
+            // Show setup banner
+            var banner = document.createElement("div");
+            banner.id = "rz-setup-banner";
+            banner.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#A78BFA22,#00F0FF11);border-bottom:1px solid #A78BFA44;padding:12px 20px;display:flex;align-items:center;gap:12px;backdrop-filter:blur(10px);font-family:sans-serif";
+            banner.innerHTML = '<div style="flex:1"><div style="font-size:13px;font-weight:700;color:#A78BFA;margin-bottom:2px">\u26A1 Connect Your AI</div><div style="font-size:11px;color:#888">Paste your Anthropic API key to activate all AI features. Get one free at console.anthropic.com</div></div><input id="rz-banner-key" type="password" placeholder="sk-ant-api03-..." style="width:240px;padding:8px 12px;border-radius:8px;border:1px solid #A78BFA44;background:rgba(10,10,30,.8);color:#d0d0e0;font-size:11px;outline:none" /><button onclick="var k=document.getElementById('rz-banner-key').value;if(k.indexOf('sk-ant-')===0||k.indexOf('sk-proj-')===0||k.indexOf('sk-')===0){var c=JSON.parse(localStorage.getItem('rowzr_backend')||'{}\');c.key=k;if(k.indexOf('sk-proj-')===0)c.provider='openai';else c.provider='anthropic';localStorage.setItem('rowzr_backend',JSON.stringify(c));document.getElementById('rz-setup-banner').remove();location.reload();}else{alert('Enter a valid API key');}" style="padding:8px 16px;border-radius:8px;border:none;background:linear-gradient(135deg,#A78BFA,#00F0FF);color:#000;font-weight:800;font-size:11px;cursor:pointer;white-space:nowrap">Connect</button><button onclick="document.getElementById('rz-setup-banner').remove()" style="background:none;border:none;color:#555;cursor:pointer;font-size:16px;padding:0 4px">\u00D7</button>';
+            document.body.insertBefore(banner, document.body.firstChild);
+          }
+        }).catch(function() {
+          // Same — show banner if can't reach function at all
+          // but only if no direct key is set
+        });
+    }
+  }, 1500);
+
   window.fetch = function(url, opts) {
     if (typeof url === "string" && url.indexOf("/.netlify/functions/chat") !== -1) {
+      // Skip network call if we already know function is missing
+      if (window._rowzrFnMissing) {
+        var cfg3 = window.RowzrBackend.getConfig();
+        var body3 = JSON.parse(opts && opts.body ? opts.body : "{}");
+        return window.RowzrBackend.callProvider(body3, cfg3);
+      }
       return _f.apply(window, arguments).then(function(r) {
-        if (r.status === 404 || r.status === 401) {
+        if (r.status === 404) {
+          // Function not deployed — use direct API
+          window._rowzrFnMissing = true;
           var cfg = window.RowzrBackend.getConfig();
           var body = JSON.parse(opts && opts.body ? opts.body : "{}");
           return window.RowzrBackend.callProvider(body, cfg);
+        }
+        if (r.status === 401) {
+          // Function exists but no API key set on server
+          // Still try direct if user has a key
+          var cfg2 = window.RowzrBackend.getConfig();
+          if (cfg2.key) {
+            var body2 = JSON.parse(opts && opts.body ? opts.body : "{}");
+            return window.RowzrBackend.callProvider(body2, cfg2);
+          }
+          return r;
         }
         return r;
       }).catch(function() {
@@ -618,7 +690,7 @@ SPECIALIZATION BY MODEL:
     const buildingsLayer = useRef(null);
     const tileLayerRef = useRef(null);
     const isMobile = useIsMobile();
-    const tiles = { map: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", terrain: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", dark: "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png" };
+    const tiles = { map: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", terrain: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", dark: "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png", "dark-hd": "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}@2x.png" };
     useEffect(() => {
       if (!mapRef.current || leafletMap.current) return;
       if (!document.getElementById("lf-css")) {
@@ -2392,6 +2464,24 @@ ${a.data}`).join("\n\n");
     const [mode, setMode] = useState("crypto");
     return /* @__PURE__ */ React.createElement("div", { style: { height: "100%", display: "flex", flexDirection: "column" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", padding: "8px 12px", borderBottom: "1px solid var(--border)", background: "var(--bg2)", flexShrink: 0, gap: 4, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16, marginRight: 4 } }, "\u{1F4C8}"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 2, borderRadius: 8, background: "var(--bg3)", padding: 2, flex: "0 0 auto" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => setMode("crypto"), style: { padding: "6px 16px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, background: mode === "crypto" ? "var(--bg2)" : "transparent", color: mode === "crypto" ? "#10B981" : "#555", transition: "all .15s" } }, "Crypto"), /* @__PURE__ */ React.createElement("button", { onClick: () => setMode("stocks"), style: { padding: "6px 16px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, background: mode === "stocks" ? "var(--bg2)" : "transparent", color: mode === "stocks" ? "#3B82F6" : "#555", transition: "all .15s" } }, "Stocks"), React.createElement("button", { onClick: () => setMode("polymarket"), style: { padding: "6px 16px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, background: mode === "polymarket" ? "var(--bg2)" : "transparent", color: mode === "polymarket" ? "#A78BFA" : "#555", transition: "all .15s" } }, "Polymarket")), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#555", marginLeft: 8, fontFamily: "var(--font-mono)" } }, mode === "crypto" ? "Self-Custodial Wallets" : mode === "stocks" ? "Paper + Live Trading" : "Prediction Markets")), mode === "crypto" ? /* @__PURE__ */ React.createElement(CryptoPanel, null) : mode === "stocks" ? /* @__PURE__ */ React.createElement(StocksPanel, null) : /* @__PURE__ */ React.createElement(PolymarketPanel, null));
   }
+  // Real crypto price fetcher (CoinGecko, no API key needed)
+  async function fetchRealCryptoPrices(assets) {
+    try {
+      var ids = { BTC: "bitcoin", ETH: "ethereum", SOL: "solana", USDC: "usd-coin", AAVE: "aave", MATIC: "matic-network", AVAX: "avalanche-2", DOT: "polkadot", LINK: "chainlink", UNI: "uniswap" };
+      var symbols = assets.map(function(a) { return ids[a.symbol]; }).filter(Boolean);
+      if (symbols.length === 0) return assets;
+      var r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=" + symbols.join(",") + "&vs_currencies=usd&include_24hr_change=true");
+      var data = await r.json();
+      return assets.map(function(a) {
+        var cgId = ids[a.symbol];
+        if (cgId && data[cgId]) {
+          return Object.assign({}, a, { price: data[cgId].usd, change24h: data[cgId].usd_24h_change || 0 });
+        }
+        return a;
+      });
+    } catch(e) { return assets; }
+  }
+
   function CryptoPanel() {
     const [tab, setTab] = useState("portfolio");
     const [walletData, setWalletData] = useState(() => {
@@ -2455,6 +2545,18 @@ ${a.data}`).join("\n\n");
         history: [{ id: 1, ts: Date.now() - 864e5 * 2, type: "buy", asset: "BTC", qty: 0.01, price: 86100, total: 861, wallet: "Main" }, { id: 2, ts: Date.now() - 864e5, type: "deposit", amount: 2e3 }]
       };
     }
+    // Fetch real prices on mount
+    useEffect(() => {
+      var allAssets2 = walletData.wallets.flatMap(w => w.assets);
+      fetchRealCryptoPrices(allAssets2).then(updated => {
+        setWalletData(prev => ({ ...prev, wallets: prev.wallets.map(w => ({
+          ...w, assets: w.assets.map(a => {
+            var u = updated.find(x => x.symbol === a.symbol);
+            return u ? { ...a, price: u.price, change24h: u.change24h } : a;
+          })
+        }))}));
+      });
+    }, []);
     const chains = [{ id: "ethereum", icon: "\u27E0", color: "#627EEA", name: "Ethereum" }, { id: "solana", icon: "\u25CE", color: "#9945FF", name: "Solana" }, { id: "bitcoin", icon: "\u20BF", color: "#F7931A", name: "Bitcoin" }, { id: "arbitrum", icon: "\u25C8", color: "#28A0F0", name: "Arbitrum" }, { id: "base", icon: "\u25C9", color: "#0052FF", name: "Base" }, { id: "polygon", icon: "\u25EC", color: "#8247E5", name: "Polygon" }, { id: "multi", icon: "\u{1F310}", color: "#00F0FF", name: "Multi-Chain" }];
     const wallet = walletData.wallets[activeWallet] || walletData.wallets[0];
     const totalValue = walletData.wallets.reduce((s, w) => s + w.assets.reduce((s2, a) => s2 + a.qty * a.price, 0), 0) + walletData.fiatBalance;
@@ -2484,7 +2586,7 @@ ${a.data}`).join("\n\n");
         const data = await r.json();
         setAiOutput(data.content?.filter((b) => b.type === "text").map((b) => b.text).join("\n") || "Done.");
       } catch {
-        setAiOutput("**API Key Required** - Add ANTHROPIC_API_KEY to Netlify Environment Variables.");
+        setAiOutput("Go to **Settings > AI Backend** to connect your AI provider, or click the banner at the top of the page.");
       }
       setAiLoading(false);
       setAiInput("");
@@ -2635,7 +2737,7 @@ ${a.data}`).join("\n\n");
         const data = await r.json();
         setAiOutput(data.content?.filter((b) => b.type === "text").map((b) => b.text).join("\n") || "Done.");
       } catch {
-        setAiOutput("**API Key Required** - Add ANTHROPIC_API_KEY to Netlify Environment Variables.");
+        setAiOutput("Go to **Settings > AI Backend** to connect your AI provider, or click the banner at the top of the page.");
       }
       setAiLoading(false);
       setAiInput("");
@@ -2823,7 +2925,28 @@ ${a.data}`).join("\n\n");
     }, [worldAgents.length]);
     useEffect(() => {
       if (!showWeather) return;
-      setWeatherData(cities.map((c) => ({ ...c, temp: Math.floor(Math.random() * 40 - 5), cond: ["\u2600", "\u26C5", "\u{1F327}", "\u26C8", "\u{1F328}", "\u{1F32B}", "\u{1F324}"][Math.floor(Math.random() * 7)], wind: Math.floor(Math.random() * 30) })));
+      // Fetch real weather data
+      var wxFetches = cities.slice(0, 10).map(function(c) {
+        return fetch("https://wttr.in/" + encodeURIComponent(c.n) + "?format=%t|%C|%w&m")
+          .then(function(r) { return r.text(); })
+          .then(function(txt) {
+            var parts = txt.split("|");
+            var temp = parseInt(parts[0]) || Math.floor(Math.random() * 30);
+            var cond = (parts[1] || "").toLowerCase();
+            var condIcon = cond.includes("sun") || cond.includes("clear") ? "\u2600" : cond.includes("cloud") ? "\u26C5" : cond.includes("rain") ? "\u{1F327}" : cond.includes("snow") ? "\u{1F328}" : cond.includes("fog") || cond.includes("mist") ? "\u{1F32B}" : "\u{1F324}";
+            var wind = parseInt(parts[2]) || Math.floor(Math.random() * 20);
+            return Object.assign({}, c, { temp: temp, cond: condIcon, wind: wind, real: true });
+          })
+          .catch(function() { return Object.assign({}, c, { temp: Math.floor(Math.random() * 30), cond: "\u{1F324}", wind: Math.floor(Math.random() * 20), real: false }); });
+      });
+      Promise.all(wxFetches).then(function(results) {
+        // Fill remaining cities with estimates
+        var filled = cities.map(function(c) {
+          var real = results.find(function(r) { return r.n === c.n; });
+          return real || Object.assign({}, c, { temp: Math.floor(Math.random() * 30 + 5), cond: "\u{1F324}", wind: Math.floor(Math.random() * 15), real: false });
+        });
+        setWeatherData(filled);
+      });
       const iv = setInterval(() => setWeatherData((w) => w.map((c) => ({ ...c, temp: c.temp + Math.floor(Math.random() * 3) - 1 }))), 15e3);
       return () => clearInterval(iv);
     }, [showWeather]);
@@ -3846,7 +3969,7 @@ Provide specific, quantified recommendations with units. Reference the farm's ac
         const data = await r.json();
         setAiOutput(data.content?.filter((b) => b.type === "text").map((b) => b.text).join("\n") || "Done.");
       } catch {
-        setAiOutput("**API Key Required** - Add ANTHROPIC_API_KEY to Netlify Environment Variables.");
+        setAiOutput("Go to **Settings > AI Backend** to connect your AI provider, or click the banner at the top of the page.");
       }
       setAiLoading(false);
       setAiInput("");
