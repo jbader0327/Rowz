@@ -7,6 +7,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script>(function(){var k=atob("QUl6YVN5RG4xYkhPdTQzUzVwMHllc1hlWnJ0WldKMGNRMXVDZnBF");firebase.initializeApp({apiKey:k,authDomain:"rowzr-ai.firebaseapp.com",projectId:"rowzr-ai",storageBucket:"rowzr-ai.firebasestorage.app",messagingSenderId:"796646477987",appId:"1:796646477987:web:1aac06875f3a2e1e7cef16",measurementId:"G-V28CH5D6N8"});})();</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /><link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800&family=Space+Mono:wght@400;700&family=JetBrains+Mono:wght@400;500;600&family=Nunito:wght@400;600;700&family=Caveat:wght@400;600;700&family=Lexend:wght@400;500;600&display=swap" rel="stylesheet" /><style>*{margin:0;padding:0;box-sizing:border-box}html,body,#root{width:100%;height:100%;overflow:hidden}body{font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased;background:#06061a;color:#d0d0e0;-webkit-tap-highlight-color:transparent}#ld{display:flex;align-items:center;justify-content:center;height:100vh;background:#06061a}#ld .lg{width:80px;height:80px;object-fit:contain;margin:0 auto 14px;filter:drop-shadow(0 0 20px rgba(0,240,255,.35));animation:gp 3s ease infinite}#ld .tx{color:#00F0FF;font:600 14px 'Space Mono',monospace;text-align:center}@keyframes gp{0%,100%{filter:drop-shadow(0 0 15px rgba(0,240,255,.25))}50%{filter:drop-shadow(0 0 30px rgba(0,240,255,.45))}}
+/* Typing cursor */
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+.typing-cursor::after { content:"\u258C"; animation: blink 0.8s step-end infinite; color: var(--glow1, #00F0FF); }
 /* Agent Animations */
 @keyframes agentPulse { 0%,100%{box-shadow:0 0 4px var(--agent-color,#00F0FF)} 50%{box-shadow:0 0 16px var(--agent-color,#00F0FF),0 0 32px var(--agent-color,#00F0FF)44} }
 @keyframes agentWork { 0%{transform:scale(1)} 25%{transform:scale(1.1) rotate(3deg)} 50%{transform:scale(1)} 75%{transform:scale(1.1) rotate(-3deg)} 100%{transform:scale(1)} }
@@ -47,7 +50,50 @@ window.AgentEngine = {
     } catch(e) {}
   },
   // Build enhanced system prompt with memory + cross-agent context
-  enhancePrompt: function(agentId, basePrompt) {
+  // Agent-specific data tools — fetch real data per agent type
+    getAgentData: async function(agentId) {
+      var data = {};
+      try {
+        // Finance agents get real crypto prices
+        if (agentId.match(/finance|trading|crypto|stock/i)) {
+          try {
+            var r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd&include_24hr_change=true");
+            var prices = await r.json();
+            data.marketData = "LIVE MARKET DATA: BTC=$" + (prices.bitcoin?.usd||"N/A") + " (" + (prices.bitcoin?.usd_24h_change||0).toFixed(1) + "%), ETH=$" + (prices.ethereum?.usd||"N/A") + " (" + (prices.ethereum?.usd_24h_change||0).toFixed(1) + "%), SOL=$" + (prices.solana?.usd||"N/A") + " (" + (prices.solana?.usd_24h_change||0).toFixed(1) + "%)";
+          } catch(e) {}
+        }
+
+        // Research agents get current date context
+        if (agentId.match(/research|data|analyst/i)) {
+          data.dateContext = "Current date: " + new Date().toISOString().split("T")[0] + ". Always provide sources for claims. Use recent data.";
+        }
+
+        // Legal agents get jurisdiction context
+        if (agentId.match(/legal|regtech|compliance/i)) {
+          data.legalCtx = "IMPORTANT: Always disclaim that you provide legal information, not legal advice. Recommend consulting a licensed attorney. Reference specific statutes and regulations where applicable.";
+        }
+
+        // Health agents get safety context
+        if (agentId.match(/health|medical|care/i)) {
+          data.healthCtx = "CRITICAL: You provide health information only, NOT diagnosis or treatment. For emergencies, direct to 911. For crisis, direct to 988 Suicide & Crisis Lifeline. Always recommend consulting a healthcare provider.";
+        }
+
+        // Marketing agents get business context
+        if (agentId.match(/marketing|sales|ecommerce/i)) {
+          try {
+            var smb = JSON.parse(localStorage.getItem("rowzr_smb") || "{}");
+            if (smb.leads) {
+              var pipeline = smb.leads.reduce(function(s,l){return s+(l.value||0)},0);
+              var wonCount = smb.leads.filter(function(l){return l.status==="won"}).length;
+              data.bizData = "BUSINESS CONTEXT: " + smb.leads.length + " total leads, $" + pipeline.toLocaleString() + " pipeline, " + wonCount + " won deals";
+            }
+          } catch(e) {}
+        }
+      } catch(e) {}
+      return Object.values(data).join("\n");
+    },
+
+    enhancePrompt: function(agentId, basePrompt) {
     var mem = this.getMemory(agentId);
     var enhanced = basePrompt;
     if (mem.taskCount > 0) {
@@ -139,7 +185,91 @@ window.AgentEngine = {
       try { return JSON.parse(localStorage.getItem("rowzr_backend")) || {provider:"anthropic",key:"",model:"",endpoint:""}; }
       catch(e) { return {provider:"anthropic",key:"",model:"",endpoint:""}; }
     },
-    callProvider: function(body, cfg) {
+    // Streaming API call — yields tokens as they arrive
+    streamProvider: async function(body, cfg, onToken) {
+      var p = cfg.provider || "anthropic";
+      var k = cfg.key || "";
+      var msgs = body.messages || [];
+      var sys = body.system || "";
+      var maxTk = body.max_tokens || 4096;
+
+      if (p === "anthropic" && k) {
+        try {
+          var r = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {"Content-Type":"application/json","x-api-key":k,"anthropic-version":"2023-06-01"},
+            body: JSON.stringify({model:cfg.model||"claude-sonnet-4-20250514",max_tokens:maxTk,system:sys,messages:msgs,stream:true})
+          });
+          var reader = r.body.getReader();
+          var decoder = new TextDecoder();
+          var buffer = "";
+          var fullText = "";
+          while (true) {
+            var chunk = await reader.read();
+            if (chunk.done) break;
+            buffer += decoder.decode(chunk.value, {stream:true});
+            var lines = buffer.split("\n");
+            buffer = lines.pop();
+            for (var i = 0; i < lines.length; i++) {
+              var line = lines[i];
+              if (line.startsWith("data: ")) {
+                var jsonStr = line.slice(6);
+                if (jsonStr === "[DONE]") continue;
+                try {
+                  var evt = JSON.parse(jsonStr);
+                  if (evt.type === "content_block_delta" && evt.delta && evt.delta.text) {
+                    fullText += evt.delta.text;
+                    if (onToken) onToken(fullText);
+                  }
+                } catch(e2) {}
+              }
+            }
+          }
+          return fullText || "Done.";
+        } catch(e) { return null; }
+      }
+
+      if (p === "openai" && k) {
+        try {
+          var oMsgs = sys ? [{role:"system",content:sys}].concat(msgs) : msgs;
+          var r2 = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {"Content-Type":"application/json","Authorization":"Bearer "+k},
+            body: JSON.stringify({model:cfg.model||"gpt-4o",max_tokens:maxTk,messages:oMsgs,stream:true})
+          });
+          var reader2 = r2.body.getReader();
+          var decoder2 = new TextDecoder();
+          var buf2 = "";
+          var full2 = "";
+          while (true) {
+            var ch2 = await reader2.read();
+            if (ch2.done) break;
+            buf2 += decoder2.decode(ch2.value, {stream:true});
+            var lns2 = buf2.split("\n");
+            buf2 = lns2.pop();
+            for (var j = 0; j < lns2.length; j++) {
+              if (lns2[j].startsWith("data: ")) {
+                var js2 = lns2[j].slice(6);
+                if (js2 === "[DONE]") continue;
+                try {
+                  var ev2 = JSON.parse(js2);
+                  if (ev2.choices && ev2.choices[0] && ev2.choices[0].delta && ev2.choices[0].delta.content) {
+                    full2 += ev2.choices[0].delta.content;
+                    if (onToken) onToken(full2);
+                  }
+                } catch(e3) {}
+              }
+            }
+          }
+          return full2 || "Done.";
+        } catch(e) { return null; }
+      }
+
+      // Fallback to non-streaming for Ollama/Custom
+      return null;
+    },
+
+    callProvider: function(body, cfg) {callProvider: function(body, cfg) {
       var p = cfg.provider || "anthropic";
       var k = cfg.key || "";
       var msgs = body.messages || [];
@@ -259,6 +389,7 @@ window.AgentEngine = {
   };
 })();
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script><script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script><script>
 (() => {
   const { useState, useEffect, useRef, useCallback, useMemo } = React;
@@ -614,21 +745,11 @@ SPECIALIZATION BY MODEL:
     pricing: { icon: "\u25C8", label: "Plans & Pricing", cat: "System", color: "#00F0FF" }
   };
   const CATEGORIES = [
-    { key: "Intelligence", color: "#00F0FF" },
-    { key: "Agent \u2014 Enterprise", color: "#FBBF24" },
-    { key: "Agent \u2014 SMB", color: "#34D399" },
-    { key: "Agent \u2014 Multimodal", color: "#818CF8" },
-    { key: "Agent \u2014 Physical", color: "#64748B" },
-    { key: "Agent \u2014 Governance", color: "#FB7185" },
-    { key: "Agent \u2014 Platform", color: "#38BDF8" },
+    { key: "AI", color: "#00F0FF" },
+    { key: "Agents", color: "#FBBF24" },
     { key: "Create", color: "#F472B6" },
-    { key: "Business", color: "#A78BFA" },
-    { key: "Productivity", color: "#34D399" },
-    { key: "Geospatial", color: "#4ADE80" },
-    { key: "Analytics", color: "#F59E0B" },
-    { key: "Tools", color: "#818CF8" },
-    { key: "Industry", color: "#84CC16" },
-    { key: "Solutions", color: "#818CF8" },
+    { key: "Business", color: "#34D399" },
+    { key: "Wellness", color: "#818CF8" },
     { key: "System", color: "#64748B" }
   ];
   function md(text) {
@@ -1986,19 +2107,33 @@ Make every world feel alive, explorable, and surprising. The user should feel li
 ${a.data}`).join("\n\n");
         const fullText = (fileTexts ? fileTexts + "\n\n" : "") + (input.trim() || "Analyze the uploaded content.");
         content.push({ type: "text", text: fullText });
-        const r = await fetch("/.netlify/functions/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-20250514",
-            max_tokens: 4096,
-            system: (featurePrompts[featureKey2] || SYSTEM_PROMPT) + " Format your response with clean markdown. If images are provided, analyze them in detail.",
-            messages: [{ role: "user", content }]
-          })
-        });
-        const data = await r.json();
-        const reply = data.content?.filter((b) => b.type === "text").map((b) => b.text).join("\n") || "Done.";
-        setResult(reply);
+        // Fetch agent-specific live data
+        let agentDataCtx = "";
+        if (window.AgentEngine && window.AgentEngine.getAgentData) {
+          try { agentDataCtx = await window.AgentEngine.getAgentData(featureKey2); } catch(e) {}
+        }
+        // Try streaming first for real-time token display
+        const cfg = window.RowzrBackend ? window.RowzrBackend.getConfig() : {};
+        const sysPrompt = (featurePrompts[featureKey2] || SYSTEM_PROMPT) + " Format your response with clean markdown. If images are provided, analyze them in detail." + (agentDataCtx ? "\n\n" + agentDataCtx : "");
+        let reply = null;
+        if (cfg.key && window.RowzrBackend && window.RowzrBackend.streamProvider) {
+          reply = await window.RowzrBackend.streamProvider(
+            { system: sysPrompt, messages: [...chatLog2.slice(-10).map(m => ({role: m.role === "user" ? "user" : "assistant", content: m.content})), { role: "user", content: typeof content === "object" ? content : [{type:"text",text:content}] }], max_tokens: 4096 },
+            cfg,
+            function(partial) { setResult(partial); }
+          );
+        }
+        if (!reply) {
+          // Fallback to non-streaming
+          const r = await fetch("/.netlify/functions/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4096, system: sysPrompt, messages: [{ role: "user", content }] })
+          });
+          const data = await r.json();
+          reply = data.content?.filter((b) => b.type === "text").map((b) => b.text).join("\n") || "Done.";
+          setResult(reply);
+        }
         setChatLog((prev) => [...prev, { role: "user", content: input.trim(), ts: Date.now() }, { role: "assistant", content: reply, ts: Date.now() }]);
       } catch (e) {
         setResult(RowzrAPI.demoResponse(featureKey2, input));
@@ -2789,6 +2924,214 @@ ${a.data}`).join("\n\n");
       if (e.key === "Enter") processAI();
     }, placeholder: "Analyze NVDA earnings impact...", className: "r-input", style: { flex: 1, fontSize: 12 } }), /* @__PURE__ */ React.createElement("button", { onClick: processAI, disabled: aiLoading, className: "r-btn-primary", style: { fontSize: 11, padding: "8px 14px" } }, aiLoading ? "..." : "\u2192")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, flexWrap: "wrap" } }, ["Portfolio review", "AAPL technicals", "Sector rotation", "Earnings plays", "Risk assessment", "Options strategy"].map((q) => /* @__PURE__ */ React.createElement("button", { key: q, onClick: () => setAiInput(q), className: "r-chip", style: { fontSize: 9 } }, q)))), aiOutput && /* @__PURE__ */ React.createElement("div", { className: "r-panel", style: { marginTop: 10 } }, /* @__PURE__ */ React.createElement("div", { className: "msg-content", dangerouslySetInnerHTML: { __html: md(aiOutput) } })))));
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // GLOBE3D — Three.js Interactive Earth Globe
+  // ═══════════════════════════════════════════════════════════════════════════════
+  function Globe3D({ agents, weather, vessels, showMaritime }) {
+    const containerRef = useRef(null);
+    const sceneRef = useRef(null);
+    const rendererRef = useRef(null);
+    const cameraRef = useRef(null);
+    const globeRef = useRef(null);
+    const agentDotsRef = useRef([]);
+    const [isRotating, setIsRotating] = useState(true);
+    const mouseRef = useRef({ isDown: false, x: 0, y: 0, lon: 0, lat: 20 });
+
+    useEffect(() => {
+      if (!containerRef.current || !window.THREE) return;
+      const THREE = window.THREE;
+      const W = containerRef.current.clientWidth;
+      const H = containerRef.current.clientHeight;
+
+      // Scene
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x06061a);
+      sceneRef.current = scene;
+
+      // Camera
+      const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 1000);
+      camera.position.z = 3;
+      cameraRef.current = camera;
+
+      // Renderer
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(W, H);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      containerRef.current.appendChild(renderer.domElement);
+      rendererRef.current = renderer;
+
+      // Earth sphere
+      const geometry = new THREE.SphereGeometry(1, 64, 64);
+
+      // Create earth texture from canvas (no external image needed)
+      const texCanvas = document.createElement("canvas");
+      texCanvas.width = 2048;
+      texCanvas.height = 1024;
+      const ctx = texCanvas.getContext("2d");
+
+      // Draw base ocean
+      ctx.fillStyle = "#0a1628";
+      ctx.fillRect(0, 0, 2048, 1024);
+
+      // Draw simplified continents (approximated polygons)
+      ctx.fillStyle = "#1a2d4a";
+      ctx.strokeStyle = "#00F0FF22";
+      ctx.lineWidth = 1;
+
+      // North America
+      ctx.beginPath(); ctx.moveTo(280,200); ctx.lineTo(180,250); ctx.lineTo(160,350); ctx.lineTo(220,380); ctx.lineTo(300,400); ctx.lineTo(380,380); ctx.lineTo(440,320); ctx.lineTo(480,280); ctx.lineTo(500,220); ctx.lineTo(440,180); ctx.lineTo(380,160); ctx.lineTo(320,170); ctx.fill(); ctx.stroke();
+
+      // South America
+      ctx.beginPath(); ctx.moveTo(400,420); ctx.lineTo(360,480); ctx.lineTo(370,560); ctx.lineTo(400,640); ctx.lineTo(420,720); ctx.lineTo(440,680); ctx.lineTo(460,580); ctx.lineTo(450,500); ctx.lineTo(430,440); ctx.fill(); ctx.stroke();
+
+      // Europe
+      ctx.beginPath(); ctx.moveTo(980,200); ctx.lineTo(960,250); ctx.lineTo(1000,300); ctx.lineTo(1050,290); ctx.lineTo(1080,250); ctx.lineTo(1100,220); ctx.lineTo(1060,190); ctx.fill(); ctx.stroke();
+
+      // Africa
+      ctx.beginPath(); ctx.moveTo(1000,340); ctx.lineTo(960,400); ctx.lineTo(980,500); ctx.lineTo(1020,600); ctx.lineTo(1060,650); ctx.lineTo(1100,580); ctx.lineTo(1120,480); ctx.lineTo(1100,400); ctx.lineTo(1060,340); ctx.fill(); ctx.stroke();
+
+      // Asia
+      ctx.beginPath(); ctx.moveTo(1100,160); ctx.lineTo(1140,200); ctx.lineTo(1200,220); ctx.lineTo(1320,250); ctx.lineTo(1440,260); ctx.lineTo(1520,300); ctx.lineTo(1560,200); ctx.lineTo(1500,140); ctx.lineTo(1380,120); ctx.lineTo(1260,130); ctx.lineTo(1180,150); ctx.fill(); ctx.stroke();
+
+      // Australia
+      ctx.beginPath(); ctx.moveTo(1520,520); ctx.lineTo(1480,560); ctx.lineTo(1500,620); ctx.lineTo(1580,640); ctx.lineTo(1640,600); ctx.lineTo(1620,540); ctx.lineTo(1560,520); ctx.fill(); ctx.stroke();
+
+      // Grid lines
+      ctx.strokeStyle = "#00F0FF08";
+      ctx.lineWidth = 0.5;
+      for (var i = 0; i < 2048; i += 128) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 1024); ctx.stroke(); }
+      for (var j = 0; j < 1024; j += 64) { ctx.beginPath(); ctx.moveTo(0, j); ctx.lineTo(2048, j); ctx.stroke(); }
+
+      const texture = new THREE.CanvasTexture(texCanvas);
+      const material = new THREE.MeshPhongMaterial({ map: texture, bumpScale: 0.02, specular: new THREE.Color(0x111111), shininess: 10 });
+      const globe = new THREE.Mesh(geometry, material);
+      scene.add(globe);
+      globeRef.current = globe;
+
+      // Atmosphere glow
+      const atmosGeo = new THREE.SphereGeometry(1.02, 64, 64);
+      const atmosMat = new THREE.MeshPhongMaterial({ color: 0x00F0FF, transparent: true, opacity: 0.08, side: THREE.BackSide });
+      scene.add(new THREE.Mesh(atmosGeo, atmosMat));
+
+      // Lights
+      scene.add(new THREE.AmbientLight(0x333355, 0.6));
+      const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+      sunLight.position.set(5, 3, 5);
+      scene.add(sunLight);
+      const rimLight = new THREE.DirectionalLight(0x00F0FF, 0.3);
+      rimLight.position.set(-3, 0, -3);
+      scene.add(rimLight);
+
+      // Stars background
+      const starsGeo = new THREE.BufferGeometry();
+      const starPositions = new Float32Array(3000);
+      for (var k = 0; k < 3000; k++) { starPositions[k] = (Math.random() - 0.5) * 100; }
+      starsGeo.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
+      scene.add(new THREE.Points(starsGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.05 })));
+
+      // Add agent dots on globe surface
+      function latLonToVec3(lat2, lon2, r) {
+        var phi = (90 - lat2) * Math.PI / 180;
+        var theta = (lon2 + 180) * Math.PI / 180;
+        return new THREE.Vector3(-r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta));
+      }
+
+      // Render agent dots
+      var dotGroup = new THREE.Group();
+      (agents || []).filter(function() { return Math.random() < 0.08; }).forEach(function(a) {
+        var pos = latLonToVec3(a.lat, a.lng, 1.01);
+        var dotGeo = new THREE.SphereGeometry(a.isRealTask ? 0.012 : 0.005, 8, 8);
+        var color = parseInt(a.c.replace("#",""), 16) || 0x00F0FF;
+        var dotMat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: a.isRealTask ? 1 : 0.6 });
+        var dot = new THREE.Mesh(dotGeo, dotMat);
+        dot.position.copy(pos);
+        dotGroup.add(dot);
+      });
+      scene.add(dotGroup);
+
+      // Render vessel dots if maritime enabled
+      if (showMaritime && vessels) {
+        vessels.filter(function() { return Math.random() < 0.3; }).forEach(function(v) {
+          var pos = latLonToVec3(v.lat, v.lng, 1.015);
+          var color = parseInt(v.color.replace("#",""), 16) || 0x0EA5E9;
+          var vDot = new THREE.Mesh(new THREE.SphereGeometry(0.006, 6, 6), new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.7 }));
+          vDot.position.copy(pos);
+          dotGroup.add(vDot);
+        });
+      }
+
+      // Mouse interaction
+      var onMouseDown = function(e) { mouseRef.current.isDown = true; mouseRef.current.x = e.clientX; mouseRef.current.y = e.clientY; setIsRotating(false); };
+      var onMouseUp = function() { mouseRef.current.isDown = false; };
+      var onMouseMove = function(e) {
+        if (!mouseRef.current.isDown) return;
+        var dx = e.clientX - mouseRef.current.x;
+        var dy = e.clientY - mouseRef.current.y;
+        mouseRef.current.lon -= dx * 0.3;
+        mouseRef.current.lat = Math.max(-60, Math.min(60, mouseRef.current.lat + dy * 0.3));
+        mouseRef.current.x = e.clientX;
+        mouseRef.current.y = e.clientY;
+      };
+      var onWheel = function(e) {
+        camera.position.z = Math.max(1.5, Math.min(8, camera.position.z + e.deltaY * 0.003));
+      };
+
+      renderer.domElement.addEventListener("mousedown", onMouseDown);
+      renderer.domElement.addEventListener("mouseup", onMouseUp);
+      renderer.domElement.addEventListener("mousemove", onMouseMove);
+      renderer.domElement.addEventListener("wheel", onWheel);
+      renderer.domElement.addEventListener("touchstart", function(e) { if (e.touches[0]) { onMouseDown({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY }); } });
+      renderer.domElement.addEventListener("touchend", onMouseUp);
+      renderer.domElement.addEventListener("touchmove", function(e) { if (e.touches[0]) { onMouseMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY }); } });
+
+      // Animation loop
+      var autoRotation = 0;
+      var animFrame;
+      function animate() {
+        animFrame = requestAnimationFrame(animate);
+        if (!mouseRef.current.isDown) {
+          autoRotation += 0.05;
+          mouseRef.current.lon = autoRotation;
+        }
+        var phi = (90 - mouseRef.current.lat) * Math.PI / 180;
+        var theta = mouseRef.current.lon * Math.PI / 180;
+        var dist = camera.position.z;
+        camera.position.x = dist * Math.sin(phi) * Math.cos(theta);
+        camera.position.y = dist * Math.cos(phi);
+        camera.position.z = dist * Math.sin(phi) * Math.sin(theta);
+        camera.lookAt(0, 0, 0);
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      // Resize handler
+      var onResize = function() {
+        var w2 = containerRef.current?.clientWidth || W;
+        var h2 = containerRef.current?.clientHeight || H;
+        camera.aspect = w2 / h2;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w2, h2);
+      };
+      window.addEventListener("resize", onResize);
+
+      return function() {
+        cancelAnimationFrame(animFrame);
+        window.removeEventListener("resize", onResize);
+        renderer.domElement.removeEventListener("mousedown", onMouseDown);
+        renderer.domElement.removeEventListener("mouseup", onMouseUp);
+        renderer.domElement.removeEventListener("mousemove", onMouseMove);
+        renderer.domElement.removeEventListener("wheel", onWheel);
+        if (containerRef.current && renderer.domElement.parentNode === containerRef.current) {
+          containerRef.current.removeChild(renderer.domElement);
+        }
+        renderer.dispose();
+      };
+    }, [agents?.length, vessels?.length, showMaritime]);
+
+    return React.createElement("div", { ref: containerRef, style: { width: "100%", height: "100%", position: "absolute", inset: 0, cursor: "grab" } });
+  }
+
   function VistaRowPanel() {
     const mapRef = useRef(null);
     const leafletMap = useRef(null);
@@ -3298,10 +3641,10 @@ Your task: ${step.prompt}` : step.prompt;
     };
     const activeTaskCount = tasks.filter((t) => t.status === "running").length;
     const completedTaskCount = tasks.filter((t) => t.status === "complete").length;
-    return /* @__PURE__ */ React.createElement("div", { style: { height: "100%", position: "relative", overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { ref: mapRef, style: { width: "100%", height: "100%", position: "absolute", inset: 0 } }), showHUD && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, left: 0, right: 0, zIndex: 20, background: "linear-gradient(180deg,rgba(6,6,26,.95) 0%,rgba(6,6,26,.5) 80%,transparent 100%)", padding: isMobile ? "10px 12px 20px" : "12px 16px 24px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: isMobile ? 6 : 12, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 8, height: 8, borderRadius: "50%", background: activeTaskCount > 0 ? "#FBBF24" : "#34D399", animation: "pulse 2s infinite" } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14, fontWeight: 800, fontFamily: "var(--font-mono)" } }, /* @__PURE__ */ React.createElement("span", { style: { color: "#00F0FF" } }, "\u25C9"), " ", /* @__PURE__ */ React.createElement("span", { className: "grad-text" }, "VistaRow"))), !isMobile && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, fontSize: 10, fontFamily: "var(--font-mono)" } }, /* @__PURE__ */ React.createElement("span", { style: { color: "#34D399" } }, completedTaskCount, " done"), activeTaskCount > 0 && /* @__PURE__ */ React.createElement("span", { style: { color: "#FBBF24" } }, activeTaskCount, " running"), /* @__PURE__ */ React.createElement("span", { style: { color: "#A78BFA" } }, allAgents.length, " agents"), /* @__PURE__ */ React.createElement("span", { style: { color: "#555" } }, customAgents.length, " custom"),
+    return /* @__PURE__ */ React.createElement("div", { style: { height: "100%", position: "relative", overflow: "hidden" } }, /* @__PURE__ */ mapMode === "globe3d" ? React.createElement(Globe3D, { agents: worldAgents, weather: weatherData, vessels: vessels, showMaritime: showMaritime }) : React.createElement("div", { ref: mapRef, style: { width: "100%", height: "100%", position: "absolute", inset: 0 } }), showHUD && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 0, left: 0, right: 0, zIndex: 20, background: "linear-gradient(180deg,rgba(6,6,26,.95) 0%,rgba(6,6,26,.5) 80%,transparent 100%)", padding: isMobile ? "10px 12px 20px" : "12px 16px 24px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: isMobile ? 6 : 12, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 8, height: 8, borderRadius: "50%", background: activeTaskCount > 0 ? "#FBBF24" : "#34D399", animation: "pulse 2s infinite" } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14, fontWeight: 800, fontFamily: "var(--font-mono)" } }, /* @__PURE__ */ React.createElement("span", { style: { color: "#00F0FF" } }, "\u25C9"), " ", /* @__PURE__ */ React.createElement("span", { className: "grad-text" }, "VistaRow"))), !isMobile && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, fontSize: 10, fontFamily: "var(--font-mono)" } }, /* @__PURE__ */ React.createElement("span", { style: { color: "#34D399" } }, completedTaskCount, " done"), activeTaskCount > 0 && /* @__PURE__ */ React.createElement("span", { style: { color: "#FBBF24" } }, activeTaskCount, " running"), /* @__PURE__ */ React.createElement("span", { style: { color: "#A78BFA" } }, allAgents.length, " agents"), /* @__PURE__ */ React.createElement("span", { style: { color: "#555" } }, customAgents.length, " custom"),
             showMaritime && React.createElement("span", { style: { color: "#0EA5E9" } }, vessels.length, " vessels")), /* @__PURE__ */ React.createElement("div", { style: { marginLeft: "auto", display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement("input", { value: searchQ, onChange: (e) => setSearchQ(e.target.value), onKeyDown: (e) => {
       if (e.key === "Enter") searchPlace(searchQ);
-    }, placeholder: "Fly to...", className: "r-input", style: { width: isMobile ? 100 : 160, fontSize: 11, padding: "5px 10px", background: "rgba(10,10,30,.8)", borderColor: "#1a1a3a" } }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 1, background: "rgba(10,10,30,.8)", borderRadius: 6, border: "1px solid #1a1a3a" } }, [{ id: "dark", l: "\u{1F319}" }, { id: "map", l: "\u{1F5FA}" }, { id: "satellite", l: "\u{1F6F0}" }, { id: "terrain", l: "\u26F0" }].map((m) => /* @__PURE__ */ React.createElement("button", { key: m.id, onClick: () => setMapMode(m.id), style: { padding: "4px 6px", border: "none", cursor: "pointer", fontSize: 10, background: mapMode === m.id ? "#1a1a3a" : "transparent", color: mapMode === m.id ? "#00F0FF" : "#555", borderRadius: 4 } }, m.l))), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowOverlayMenu(!showOverlayMenu), style: { padding: "4px 8px", borderRadius: 6, border: "1px solid #1a1a3a", background: "rgba(10,10,30,.8)", cursor: "pointer", fontSize: 10, color: "#00F0FF" } }, "\u25C9")))), showOverlayMenu && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: isMobile ? 50 : 48, right: 12, width: 200, borderRadius: 10, background: "rgba(8,8,30,.95)", border: "1px solid #1a1a3a", zIndex: 25, padding: 10, backdropFilter: "blur(10px)" } }, [{ l: "AI Agents", st: showAgents, fn: () => setShowAgents(!showAgents), c: "#34D399" }, { l: "Weather", st: showWeather, fn: () => setShowWeather(!showWeather), c: "#FBBF24" }, { l: "Satellites", st: showSatellites, fn: () => setShowSatellites(!showSatellites), c: "#00BFFF" }, { l: "Local POI", st: showPOI, fn: () => setShowPOI(!showPOI), c: "#F472B6" }, { l: "Buildings", st: showBuildings, fn: () => setShowBuildings(!showBuildings), c: "#00F0FF" }, { l: "HUD", st: showHUD, fn: () => setShowHUD(!showHUD), c: "#888" }].map((o) => /* @__PURE__ */ React.createElement("div", { key: o.l, onClick: o.fn, style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 0", cursor: "pointer" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: o.st ? o.c : "#555" } }, o.l), /* @__PURE__ */ React.createElement("div", { style: { width: 28, height: 14, borderRadius: 7, background: o.st ? o.c : "#333", position: "relative" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 10, height: 10, borderRadius: 5, background: "#fff", position: "absolute", top: 2, left: o.st ? 16 : 2, transition: "left .2s" } }))))), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: "50%", left: 8, transform: "translateY(-50%)", display: "flex", flexDirection: "column", gap: 6, zIndex: 20 } }, [
+    }, placeholder: "Fly to...", className: "r-input", style: { width: isMobile ? 100 : 160, fontSize: 11, padding: "5px 10px", background: "rgba(10,10,30,.8)", borderColor: "#1a1a3a" } }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 1, background: "rgba(10,10,30,.8)", borderRadius: 6, border: "1px solid #1a1a3a" } }, [{ id: "dark", l: "\u{1F319}" }, { id: "map", l: "\u{1F5FA}" }, { id: "satellite", l: "\u{1F6F0}" }, { id: "terrain", l: "\u26F0" }, { id: "globe3d", l: "\u{1F30D}" }].map((m) => /* @__PURE__ */ React.createElement("button", { key: m.id, onClick: () => setMapMode(m.id), style: { padding: "4px 6px", border: "none", cursor: "pointer", fontSize: 10, background: mapMode === m.id ? "#1a1a3a" : "transparent", color: mapMode === m.id ? "#00F0FF" : "#555", borderRadius: 4 } }, m.l))), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowOverlayMenu(!showOverlayMenu), style: { padding: "4px 8px", borderRadius: 6, border: "1px solid #1a1a3a", background: "rgba(10,10,30,.8)", cursor: "pointer", fontSize: 10, color: "#00F0FF" } }, "\u25C9")))), showOverlayMenu && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: isMobile ? 50 : 48, right: 12, width: 200, borderRadius: 10, background: "rgba(8,8,30,.95)", border: "1px solid #1a1a3a", zIndex: 25, padding: 10, backdropFilter: "blur(10px)" } }, [{ l: "AI Agents", st: showAgents, fn: () => setShowAgents(!showAgents), c: "#34D399" }, { l: "Weather", st: showWeather, fn: () => setShowWeather(!showWeather), c: "#FBBF24" }, { l: "Satellites", st: showSatellites, fn: () => setShowSatellites(!showSatellites), c: "#00BFFF" }, { l: "Local POI", st: showPOI, fn: () => setShowPOI(!showPOI), c: "#F472B6" }, { l: "Buildings", st: showBuildings, fn: () => setShowBuildings(!showBuildings), c: "#00F0FF" }, { l: "HUD", st: showHUD, fn: () => setShowHUD(!showHUD), c: "#888" }].map((o) => /* @__PURE__ */ React.createElement("div", { key: o.l, onClick: o.fn, style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 0", cursor: "pointer" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: o.st ? o.c : "#555" } }, o.l), /* @__PURE__ */ React.createElement("div", { style: { width: 28, height: 14, borderRadius: 7, background: o.st ? o.c : "#333", position: "relative" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 10, height: 10, borderRadius: 5, background: "#fff", position: "absolute", top: 2, left: o.st ? 16 : 2, transition: "left .2s" } }))))), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: "50%", left: 8, transform: "translateY(-50%)", display: "flex", flexDirection: "column", gap: 6, zIndex: 20 } }, [
       { icon: "\u25CE", label: "Tasks", fn: () => setShowTaskPanel(!showTaskPanel), active: showTaskPanel, count: activeTaskCount },
       { icon: "\u26A1", label: "Workflow", fn: () => setShowWorkflow(!showWorkflow), active: showWorkflow },
       { icon: "+", label: "Create Agent", fn: () => setShowAgentCreator(!showAgentCreator), active: showAgentCreator }
@@ -4924,7 +5267,7 @@ ${text}`], { type: "text/markdown" });
     }, style: { width: "calc(100% - 12px)", margin: "0 6px", padding: 10, borderRadius: 10, background: "linear-gradient(135deg,var(--glow1)18,var(--glow2)18)", border: `1px solid ${darkMode ? "var(--glow1)33" : "var(--glow2)33"}`, color: "var(--glow1)", fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "var(--font-body)" } }, "+ New Chat")), /* @__PURE__ */ React.createElement("div", { style: { padding: "4px 6px 20px" } }, CATEGORIES.map((cat) => {
       const items = filteredFeatures.filter(([, f]) => f.cat === cat.key);
       if (items.length === 0) return null;
-      const isAgent = cat.key.startsWith("Agent");
+      const isAgent = cat.key === "Agents";
       const isExpanded = !isAgent || expandedNavCat === cat.key;
       return /* @__PURE__ */ React.createElement("div", { key: cat.key }, /* @__PURE__ */ React.createElement(
         "div",
